@@ -64,7 +64,8 @@ test('editing takenAt marks the date as manual and reorders', () => {
   const { db, old } = seed();
   updatePhoto(db, old, { takenAt: '2026-01-01T00:00:00Z' });
   assert.equal(getPhoto(db, old).dateSource, 'manual');
-  assert.equal(listPhotos(db, {})[0].filename, 'old.jpg');
+  const names = listPhotos(db, {}).map(p => p.filename);
+  assert.deepEqual(names, ['old.jpg', 'new.jpg', 'mid.jpg']);
   db.close();
 });
 
