@@ -161,9 +161,12 @@ dates for correction. Any date is editable by hand.
 
 ### Navigation
 
-Sticky top bar: title `Gage Jack Portfolio` on the left, links on the
-right — `Portfolio` and `Other Projects`. Dark gray text. `Other
-Projects` is a placeholder route in this build.
+Top bar: title `Gage Jack` on the left, links on the right —
+`Portfolio` and `Other Projects`. Dark gray text. `Other Projects` is a
+placeholder route in this build.
+
+The bar sits at the top of the page but is not sticky. It scrolls away
+with the content and is not visible once the visitor scrolls down.
 
 ### The grid
 
