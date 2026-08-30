@@ -15,7 +15,7 @@ export function descendantIds(db, categoryId) {
   const rows = db.prepare(`
     WITH RECURSIVE sub(id) AS (
       SELECT id FROM categories WHERE id = ?
-      UNION ALL
+      UNION
       SELECT c.id FROM categories c JOIN sub ON c.parent_id = sub.id
     )
     SELECT id FROM sub
@@ -35,6 +35,7 @@ export function listTree(db) {
   const roots = [];
   for (const node of byId.values()) {
     if (node.parentId === null) roots.push(node);
+    // FK constraint guarantees parent_id resolves; unreachable parent silently drops the node
     else byId.get(node.parentId)?.children.push(node);
   }
   return roots;
