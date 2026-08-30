@@ -99,14 +99,12 @@ space reserved, keeping sibling names aligned.
 |---------------|---------|----------------------------------------|
 | `photo_id`    | INTEGER | FK → `photos.id`, cascade delete       |
 | `category_id` | INTEGER | FK → `categories.id`, cascade delete   |
-| `position`    | INTEGER | Sort order within this category        |
 
 Join table: a photo belongs to any number of categories. A Kyoto street
 shot at dusk can be tagged `Urban`, `Kyoto`, and `Nature` at once.
 
-`position` lives on the join row, not on the photo, because ordering is
-per-category — a photo may sit third in one category and seventh in
-another.
+Pure membership, no ordering column. Photo order is always derived from
+`taken_at`, so there is nothing to store per relationship.
 
 **Tagging a child does not imply its parents.** A photo tagged `Kyoto`
 is not automatically in `Urban`. Filtering resolves this at query time
@@ -186,12 +184,13 @@ Photos are ordered by `taken_at`, newest first, always. Selecting a
 category filters the feed to that category and its descendants; the
 ordering does not change. The default view is all photos.
 
-Chronology governs the public feed unconditionally. The manual
-`position` on `photo_categories` orders thumbnails inside the admin
-panel and acts as the tie-breaker when two photos share a timestamp —
-it never overrides date order for visitors. A timeline and a hand-sorted
-sequence are different organizing ideas; mixing them would make the feed
-unpredictable.
+Ordering is entirely automatic. There is no manual sequencing anywhere
+in the system — not on the public site, not in admin. Photos sort by
+`taken_at` descending, with `id` breaking ties between identical
+timestamps so the order is stable across page loads.
+
+Admin thumbnails use the same ordering, so what the owner sees while
+organizing matches what visitors see.
 
 ### The timeline rail
 
@@ -249,8 +248,8 @@ thumbnail grid of what is already there.
   Derivatives and EXIF extraction happen on upload. Progress is shown
   per file.
 - **Categorize** — assign a photo to any number of categories.
-- **Reorder** — drag thumbnails to set `position` within a category.
-- **Edit** — caption and date.
+- **Edit** — caption and date. Editing a date re-sorts the photo
+  automatically; it is the only way to influence position.
 - **Delete** — removes the row, its join rows, and all three files.
 - **Manage categories** — create, rename, delete, reorder, re-parent,
   set a flag.
