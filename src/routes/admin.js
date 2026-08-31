@@ -38,6 +38,11 @@ function flatten(tree, out = []) {
   return out;
 }
 
+function uploadDebugId(req) {
+  const supplied = req.get('x-upload-debug-id');
+  return supplied && /^[a-zA-Z0-9-]{1,80}$/.test(supplied) ? supplied : randomUUID();
+}
+
 function renderAdmin({ db, activeId }) {
   const tree = listTree(db);
   const flat = flatten(tree);
@@ -114,6 +119,52 @@ export function adminRouter({ db, config }) {
     limits: { fileSize: config.maxUploadBytes },
   });
 
+  // A browser-side "Failed to fetch" has no HTTP status. Correlating its
+  // request ID with the service journal tells us whether the request reached
+  // this app or was dropped by the network/tunnel before it got here.
+  function logUploadLifecycle(req, res, next) {
+    req.uploadDebugId = uploadDebugId(req);
+    const startedAt = Date.now();
+
+    req.once('aborted', () => {
+      console.warn('[upload] request aborted', {
+        id: req.uploadDebugId,
+        contentLength: req.get('content-length') ?? null,
+        elapsedMs: Date.now() - startedAt,
+      });
+    });
+
+    res.once('finish', () => {
+      console.info('[upload] request finished', {
+        id: req.uploadDebugId,
+        status: res.statusCode,
+        files: req.files?.length ?? 0,
+        fileBytes: req.files?.reduce((total, file) => total + file.size, 0) ?? 0,
+        elapsedMs: Date.now() - startedAt,
+      });
+    });
+
+    next();
+  }
+
+  function handleUploadError(err, req, res, next) {
+    console.error('[upload] request failed', {
+      id: req.uploadDebugId,
+      code: err.code ?? null,
+      contentLength: req.get('content-length') ?? null,
+    }, err);
+
+    if (res.headersSent) return next(err);
+
+    const tooLarge = err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE';
+    return res.status(tooLarge ? 413 : 500).json({
+      error: tooLarge
+        ? 'One or more files exceed the per-photo upload limit'
+        : 'Upload failed',
+      uploadId: req.uploadDebugId,
+    });
+  }
+
   // The queue is generic; this callback is where photo and database knowledge
   // lives. One job = one staged file.
   const queue = createQueue({
@@ -144,7 +195,7 @@ export function adminRouter({ db, config }) {
     res.send(renderAdmin({ db, activeId: req.query.c }));
   });
 
-  router.post('/admin/upload', requireAuth, upload.array('photos', 100), (req, res) => {
+  router.post('/admin/upload', requireAuth, logUploadLifecycle, upload.array('photos', 100), (req, res) => {
     const { batchId, total } = queue.addBatch(
       (req.files ?? []).map(file => ({
         path: file.path,
@@ -154,7 +205,7 @@ export function adminRouter({ db, config }) {
     );
     // 202: accepted, not yet processed. Progress is at the status endpoint.
     res.status(202).json({ batchId, total });
-  });
+  }, handleUploadError);
 
   router.get('/admin/upload/status/:batchId', requireAuth, (req, res) => {
     const batch = queue.getBatch(req.params.batchId);

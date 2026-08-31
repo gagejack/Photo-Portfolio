@@ -97,6 +97,27 @@ test('uploading a non-image is reported without creating a row', async () => {
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });
 
+test('an oversized upload returns a correlated 413 response', async () => {
+  const { db, base, cookie, server, photosRoot } = await harness();
+  const form = new FormData();
+  form.append('photos', new Blob([new Uint8Array(10 * 1024 * 1024 + 1)]), 'too-big.jpg');
+
+  const res = await fetch(`${base}/admin/upload`, {
+    method: 'POST',
+    headers: { cookie, 'x-upload-debug-id': 'oversize-test-001' },
+    body: form,
+  });
+
+  assert.equal(res.status, 413);
+  assert.deepEqual(await res.json(), {
+    error: 'One or more files exceed the per-photo upload limit',
+    uploadId: 'oversize-test-001',
+  });
+  assert.equal(listPhotos(db, {}).length, 0);
+
+  server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
+});
+
 test('deleting a photo removes its row and all three files', async () => {
   const { db, base, cookie, server, photosRoot } = await harness();
   await uploadAndWait(base, cookie, [[await jpegBlob(), 'shot.jpg']]);

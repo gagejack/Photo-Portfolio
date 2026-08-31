@@ -29,9 +29,42 @@
     const params = new URLSearchParams(location.search);
     if (params.get('c')) data.append('categoryId', params.get('c'));
 
-    const res = await fetch('/admin/upload', { method: 'POST', body: data });
-    if (!res.ok) throw new Error(`server returned ${res.status}`);
-    return res.json();
+    const uploadId = crypto.randomUUID();
+    const bytes = files.reduce((total, file) => total + file.size, 0);
+    console.info('[upload] sending chunk', { uploadId, files: files.length, bytes });
+
+    let res;
+    try {
+      res = await fetch('/admin/upload', {
+        method: 'POST',
+        headers: { 'X-Upload-Debug-Id': uploadId },
+        body: data,
+      });
+    } catch (err) {
+      console.error('[upload] no response received', {
+        uploadId,
+        files: files.length,
+        bytes,
+        online: navigator.onLine,
+      }, err);
+      throw new Error(`network error: ${err.message} (debug ${uploadId})`);
+    }
+
+    if (!res.ok) {
+      let detail = '';
+      try {
+        const body = await res.json();
+        detail = body.error ?? '';
+      } catch {
+        // The status code and request ID are still enough to correlate logs.
+      }
+      console.error('[upload] server rejected chunk', { uploadId, status: res.status, detail });
+      throw new Error(`server returned ${res.status}${detail ? `: ${detail}` : ''} (debug ${uploadId})`);
+    }
+
+    const result = await res.json();
+    console.info('[upload] chunk queued', { uploadId, batchId: result.batchId, total: result.total });
+    return result;
   }
 
   function showBar(total) {
@@ -56,9 +89,14 @@
   }
 
   async function fetchStatus(batchId) {
-    const res = await fetch(`/admin/upload/status/${batchId}`);
-    if (!res.ok) throw new Error(`status ${res.status}`);
-    return res.json();
+    try {
+      const res = await fetch(`/admin/upload/status/${batchId}`);
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      return res.json();
+    } catch (err) {
+      console.warn('[upload] status poll failed', { batchId }, err);
+      throw err;
+    }
   }
 
   // Poll every batch until all of them report finished, reporting combined

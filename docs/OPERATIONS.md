@@ -163,6 +163,22 @@ Through the admin panel only — `https://gagejack.com/admin`, log in as
 content hash, so re-uploading the same file overwrites its own derivatives
 rather than creating a duplicate.
 
+### Debug an interrupted upload
+
+Open the browser's developer console before retrying, then tail the service
+log on the server:
+
+```bash
+journalctl -u photoportfolio -f
+```
+
+Every upload chunk logs a `debug <id>` in the browser and the same `id` in the
+service journal. The browser also logs the chunk's file count and total bytes.
+If the browser reports a network error but the journal has no matching
+`[upload]` line, Cloudflare or the tunnel dropped the transfer before it
+reached the app. A logged `413` means at least one photo exceeded
+`MAX_UPLOAD_BYTES`; a logged `500` includes the server error stack.
+
 ## Troubleshooting
 
 | Symptom | Check |
@@ -172,4 +188,4 @@ rather than creating a duplicate.
 | Both down | `sudo systemctl status photoportfolio`, then `journalctl -u photoportfolio -n 50` |
 | `Missing required environment variable` on start | `.env` missing a key, or has Windows CRLF line endings — run `sed -i 's/\r$//' /opt/photoportfolio/.env` |
 | Service keeps restarting | `journalctl -u photoportfolio -n 50` for the crash stack |
-| Uploads fail | disk full (`df -h`), or `data/photos` not writable |
+| Uploads fail | Check the upload debug steps above; also check disk space (`df -h`) and that `data/photos` is writable |
