@@ -3,20 +3,16 @@ import exifr from 'exifr';
 
 export async function extractDate(buffer, fileMtime) {
   try {
-    const meta = await exifr.parse(buffer, ['DateTimeOriginal', 'CreateDate']);
+    const meta = await exifr.parse(buffer);
+
+    // First, check named properties for a valid Date
     const raw = meta?.DateTimeOriginal ?? meta?.CreateDate;
     if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
       return { takenAt: raw.toISOString(), source: 'exif' };
     }
-  } catch {
-    // Unreadable or absent EXIF is expected for screenshots, scans, and
-    // stripped files. Fall through to the mtime fallback.
-  }
 
-  // Fallback: try numeric tag keys (36867 = DateTimeOriginal, 36868 = DateTimeDigitized)
-  try {
-    const meta2 = await exifr.parse(buffer);
-    const rawString = meta2?.[36867] ?? meta2?.[36868];
+    // Fallback: check numeric tag keys (36867 = DateTimeOriginal, 36868 = DateTimeDigitized)
+    const rawString = meta?.[36867] ?? meta?.[36868];
     if (typeof rawString === 'string') {
       // Convert from "2025:07:14 09:30:00" format to ISO 8601
       // EXIF DateTimeOriginal carries no timezone, we treat it as UTC,
@@ -28,7 +24,8 @@ export async function extractDate(buffer, fileMtime) {
       }
     }
   } catch {
-    // If numeric tag parsing also fails, fall through to mtime fallback.
+    // Unreadable or absent EXIF is expected for screenshots, scans, and
+    // stripped files. Fall through to the mtime fallback.
   }
 
   return { takenAt: new Date(fileMtime).toISOString(), source: 'mtime' };
