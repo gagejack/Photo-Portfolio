@@ -31,7 +31,6 @@
 
   function paint() {
     const f = focusIndex();
-    const focused = anchors[Math.round(f)]?.el;
 
     items.forEach(el => {
       // Years take the distance of their nearest month.
