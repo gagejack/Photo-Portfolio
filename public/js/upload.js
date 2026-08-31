@@ -61,7 +61,7 @@
     for (const batch of batches) {
       try {
         const result = await sendChunk(batch);
-        allFailed.push(...result.failed);
+        allFailed.push(...(result.failed ?? []));
       } catch (err) {
         for (const f of batch) allFailed.push({ name: f.name, reason: err.message });
       }
@@ -82,8 +82,15 @@
     }
   }
 
-  drop.addEventListener('click', () => input.click());
-  input.addEventListener('change', () => send([...input.files]));
+  // No click handler here: `input` lives inside <label class="drop">, so the
+  // label forwards the click natively. Calling input.click() too opened the
+  // picker twice and the second dialog cancelled the first selection.
+  input.addEventListener('change', () => {
+    const files = [...input.files];
+    // Reset so picking the same file again still fires `change`.
+    input.value = '';
+    send(files);
+  });
 
   ['dragenter', 'dragover'].forEach(ev =>
     drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); })
