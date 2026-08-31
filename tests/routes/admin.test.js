@@ -8,7 +8,7 @@ import sharp from 'sharp';
 import { openDb } from '../../src/db/index.js';
 import { createApp } from '../../src/app.js';
 import { photoPaths } from '../../src/images/pipeline.js';
-import { listPhotos } from '../../src/db/photos.js';
+import { listPhotos, getPhoto } from '../../src/db/photos.js';
 
 async function harness() {
   const photosRoot = mkdtempSync(join(tmpdir(), 'pp-admin-'));
@@ -102,5 +102,29 @@ test('creating a category makes it visible on the public site', async () => {
   });
   const html = await (await fetch(`${base}/`)).text();
   assert.match(html, /Urban/);
+  server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
+});
+
+test('a caption submitted through the edit form persists and reappears escaped', async () => {
+  const { db, base, cookie, server, photosRoot } = await harness();
+  const form = new FormData();
+  form.append('photos', await jpegBlob(), 'shot.jpg');
+  await fetch(`${base}/admin/upload`, { method: 'POST', headers: { cookie }, body: form });
+
+  const [photo] = listPhotos(db, {});
+  const caption = `Kyoto <b>at</b> night's edge`;
+
+  await fetch(`${base}/admin/photos/${photo.id}`, {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+    body: `caption=${encodeURIComponent(caption)}`,
+  });
+
+  assert.equal(getPhoto(db, photo.id).caption, caption);
+
+  const html = await (await fetch(`${base}/admin`, { headers: { cookie } })).text();
+  assert.doesNotMatch(html, /Kyoto <b>at<\/b> night/);
+  assert.match(html, /Kyoto &lt;b&gt;at&lt;\/b&gt; night&#39;s edge/);
+
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });

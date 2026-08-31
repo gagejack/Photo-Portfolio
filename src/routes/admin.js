@@ -6,7 +6,7 @@ import {
   insertPhoto, listPhotos, getPhoto, deletePhoto, setPhotoCategories, updatePhoto
 } from '../db/photos.js';
 import {
-  listTree, createCategory, deleteCategory, renameCategory
+  listTree, createCategory, deleteCategory
 } from '../db/categories.js';
 import { layoutPage, escapeHtml } from '../web/render.js';
 import { flagSvg } from '../web/flags.js';
@@ -48,6 +48,7 @@ function renderAdmin({ db, activeId }) {
       </form>
       <form method="post" action="/admin/photos/${p.id}" class="meta">
         <input type="date" name="takenAt" value="${escapeHtml(p.takenAt.slice(0, 10))}">
+        <input type="text" name="caption" placeholder="Caption" value="${escapeHtml(p.caption ?? '')}">
         <select name="categories" multiple size="3">
           ${flat.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('')}
         </select>
