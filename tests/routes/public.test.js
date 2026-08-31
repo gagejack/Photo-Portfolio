@@ -93,3 +93,31 @@ test('buildRail omits periods with no photos', () => {
   assert.equal(rail.length, 1);
   assert.equal(rail[0].months.length, 1);
 });
+
+test('a category name is escaped in the filter links, not rendered as markup', async () => {
+  const db = openDb(':memory:');
+  createCategory(db, { name: '<img src=x onerror=alert(1)>', slug: 'xss' });
+  const { server, base } = await listen(createApp({ db, config }));
+  const html = await (await fetch(`${base}/`)).text();
+
+  assert.doesNotMatch(html, /<img src=x onerror=/);
+  assert.match(html, /&lt;img/);
+  server.close();
+  db.close();
+});
+
+test('the feed with zero photos renders the empty state instead of throwing', async () => {
+  const db = openDb(':memory:');
+  const { server, base } = await listen(createApp({ db, config }));
+  const res = await fetch(`${base}/`);
+  const html = await res.text();
+
+  assert.equal(res.status, 200);
+  assert.match(html, /No photos yet\./);
+  server.close();
+  db.close();
+});
+
+test('buildRail returns an empty array for no photos', () => {
+  assert.deepEqual(buildRail([]), []);
+});

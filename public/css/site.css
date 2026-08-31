@@ -25,6 +25,16 @@ a { color: inherit; text-decoration: none; }
 .stage { display: flex; padding: 18px 32px 80px; }
 .feed { flex: 1; min-width: 0; max-width: 1600px; margin: 0 auto; }
 .row { display: flex; gap: 10px; margin-bottom: 10px; }
+/* The server computes each cell's width for a fixed 1600px container, so on
+   a narrow viewport a row's items sum to far more than the screen width
+   (e.g. ~1599px on a 375px phone). overflow: hidden is what keeps that from
+   becoming a horizontal scrollbar: per spec, a flex item's default
+   min-width is auto (its content size), but overflow other than visible
+   makes min-width: auto resolve to 0. That lets every item in the row
+   shrink below its stated width, all by the same factor, so the row still
+   fits the viewport and aspect ratios are preserved. Removing overflow:
+   hidden looks like a no-op but reintroduces the overflow on narrow
+   screens. */
 .cell { overflow: hidden; }
 .row img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 2px; cursor: pointer; }
 .empty { color: #999; padding: 40px 0; }
