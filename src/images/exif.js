@@ -8,12 +8,19 @@ export async function extractDate(buffer, fileMtime) {
     if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
       return { takenAt: raw.toISOString(), source: 'exif' };
     }
+  } catch {
+    // Unreadable or absent EXIF is expected for screenshots, scans, and
+    // stripped files. Fall through to the mtime fallback.
+  }
 
-    // Fallback: try numeric tag keys (36867 = DateTimeOriginal, 36868 = DateTimeDigitized)
+  // Fallback: try numeric tag keys (36867 = DateTimeOriginal, 36868 = DateTimeDigitized)
+  try {
     const meta2 = await exifr.parse(buffer);
     const rawString = meta2?.[36867] ?? meta2?.[36868];
     if (typeof rawString === 'string') {
       // Convert from "2025:07:14 09:30:00" format to ISO 8601
+      // EXIF DateTimeOriginal carries no timezone, we treat it as UTC,
+      // which is acceptable here because only year and month are ever displayed.
       const dateStr = rawString.split(' ').map((part, i) => i === 0 ? part.replace(/:/g, '-') : part).join('T') + 'Z';
       const date = new Date(dateStr);
       if (!Number.isNaN(date.getTime())) {
@@ -21,8 +28,8 @@ export async function extractDate(buffer, fileMtime) {
       }
     }
   } catch {
-    // Unreadable or absent EXIF is expected for screenshots, scans, and
-    // stripped files. Fall through to the mtime fallback.
+    // If numeric tag parsing also fails, fall through to mtime fallback.
   }
+
   return { takenAt: new Date(fileMtime).toISOString(), source: 'mtime' };
 }
