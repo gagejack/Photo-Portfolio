@@ -1,7 +1,7 @@
 // src/images/pipeline.js
 import sharp from 'sharp';
 import { createHash } from 'node:crypto';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync, readdirSync, existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { extractDate } from './exif.js';
@@ -44,6 +44,20 @@ export function photoPaths(photosRoot, filename) {
     display: join(photosRoot, 'display', `${base}.webp`),
     thumb: join(photosRoot, 'thumb', `${base}.webp`),
   };
+}
+
+export function stagingDir(photosRoot) {
+  return join(photosRoot, 'staging');
+}
+
+// Staged bytes are only meaningful to the in-memory queue that referenced them.
+// After a restart that queue is gone, so anything still here is orphaned.
+export function sweepStaging(photosRoot) {
+  const dir = stagingDir(photosRoot);
+  if (!existsSync(dir)) return 0;
+  const names = readdirSync(dir);
+  for (const name of names) rmSync(join(dir, name), { force: true });
+  return names.length;
 }
 
 export function removePhotoFiles(photosRoot, filename) {

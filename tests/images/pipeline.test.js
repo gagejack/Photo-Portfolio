@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, existsSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { processUpload, hashName, photoPaths, removePhotoFiles, assertIsImage } from '../../src/images/pipeline.js';
+import { processUpload, hashName, photoPaths, removePhotoFiles, assertIsImage, stagingDir, sweepStaging } from '../../src/images/pipeline.js';
 
 function tmpRoot() {
   return mkdtempSync(join(tmpdir(), 'pp-'));
@@ -151,4 +151,23 @@ test('assertIsImage rejects a PDF masquerading as .jpg', () => {
 
 test('assertIsImage rejects a text file', () => {
   assert.throws(() => assertIsImage(Buffer.from('hello world')), /Unsupported file type/);
+});
+
+test('sweepStaging empties the staging directory', async () => {
+  const root = tmpRoot();
+  const dir = stagingDir(root);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'abandoned-1'), 'bytes');
+  writeFileSync(join(dir, 'abandoned-2'), 'bytes');
+
+  assert.equal(sweepStaging(root), 2);
+  assert.equal(existsSync(join(dir, 'abandoned-1')), false);
+  assert.ok(existsSync(dir), 'the directory itself survives');
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('sweepStaging on a missing directory is a no-op', () => {
+  const root = tmpRoot();
+  assert.equal(sweepStaging(root), 0);
+  rmSync(root, { recursive: true, force: true });
 });
