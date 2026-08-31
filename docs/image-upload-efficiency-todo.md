@@ -7,15 +7,17 @@ process them without making the upload request wait for image conversion.
 
 ## Current behavior
 
-- The browser groups files into chunks of 10.
-- It sends one chunk and waits for its response before sending the next.
+- The browser creates a one-photo upload request for each selected file.
+- It sends one request and waits for it to be safely queued before sending the
+  next.
 - The server stages a complete chunk to disk, then queues its photos for
   background processing.
 - The background queue can process up to four photos at once.
 
 The immediate bottleneck is the serial transfer loop: only one HTTP upload
-request is active at a time. A slow first 10-photo request prevents the next
-photos from starting.
+request is active at a time. The uploader intentionally sends one photo per
+request for reliability, so a failed multipart request cannot fail an entire
+multi-photo selection.
 
 ## Implementation order
 

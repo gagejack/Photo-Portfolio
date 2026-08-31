@@ -1,6 +1,9 @@
 import { useRef, useState } from 'react';
 
-const CHUNK_SIZE = 10;
+// Upload files as a serial client-side queue. Each request contains exactly
+// one photo, so a failed or timed-out multipart request cannot take the rest
+// of the selected batch down with it.
+const CHUNK_SIZE = 1;
 const POLL_MS = 700;
 const STALL_TIMEOUT_MS = 10 * 60 * 1000;
 
