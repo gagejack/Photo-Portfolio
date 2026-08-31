@@ -3,6 +3,7 @@ import session from 'express-session';
 import { join } from 'node:path';
 import { publicRouter } from './routes/public.js';
 import { authRouter } from './routes/auth.js';
+import { adminRouter } from './routes/admin.js';
 
 export function createApp({ db, config }) {
   const app = express();
@@ -28,6 +29,7 @@ export function createApp({ db, config }) {
   app.use('/photos/display', express.static(join(config.photosRoot, 'display')));
 
   app.use(authRouter(config));
+  app.use(adminRouter({ db, config }));
   app.use(publicRouter(db));
 
   return app;
