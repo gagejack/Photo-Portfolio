@@ -89,10 +89,44 @@ code:
 - Replace `writeFileSync` with `await writeFile` from `node:fs/promises`, so a
   worker does not block the event loop while writing 25MB.
 
-Expected cost per photo drops from ~984ms to roughly 400ms. The 2560px encode
-is more expensive than the 1600px one, so the saving is smaller than the removed
-work alone suggests; the real figure is to be measured after implementation, not
-asserted.
+- Set `effort: 2` on both WebP encodes.
+
+### Why `effort: 2`
+
+Measured after the first draft of this spec, and it changed the design. On the
+21MB noise test image the redesigned pipeline came out at 989ms — no faster than
+the 984ms it replaced, because the 2560px WebP encode consumed the entire saving.
+Breaking that down:
+
+| Stage, 2560px | Time |
+|---|---|
+| decode only | 212 ms |
+| decode + resize, no encode | 248 ms |
+| decode + resize + WebP `effort: 4` (sharp's default) | 860 ms |
+
+Encoding, not decoding, is the dominant cost. Sweeping the effort setting on a
+photo-like image (smooth gradients plus mild noise, which compresses like real
+camera output) rather than pure noise:
+
+| `effort` | Time | Output size |
+|---|---|---|
+| 4 (default) | 374 ms | 44 KB |
+| 2 | 221 ms | 46 KB |
+| 1 | 205 ms | 46 KB |
+
+`effort: 2` is 41% faster for 2KB more per photo. `effort: 1` buys almost nothing
+beyond that. Taking it.
+
+### Expected result
+
+Per-photo cost is expected to land near 550-600ms on the noise worst case, versus
+984ms today, while raising display resolution from 1600px to 2560px. Real camera
+photos compress far better than noise and should be well under that. The figure
+to trust is the one measured after implementation, not this estimate — the first
+estimate in this spec was wrong by a factor of two.
+
+The larger win is Component 2: this cost moves off the HTTP request and runs
+across several cores at once.
 
 The riskiest part of this component is deriving dimensions from EXIF orientation
 instead of measuring them. The current code carries a comment explaining that
