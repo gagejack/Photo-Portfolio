@@ -8,7 +8,8 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "hash": "node scripts/hash-password.js"
   },
   "repository": {
     "type": "git",
