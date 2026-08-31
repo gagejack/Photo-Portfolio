@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
 
-// Upload files as a serial client-side queue. Each request contains exactly
-// one photo, so a failed or timed-out multipart request cannot take the rest
-// of the selected batch down with it.
+// Each request contains exactly one photo, so a failed or timed-out multipart
+// request cannot take the rest of the selected batch down with it. Two workers
+// improve throughput without creating an unbounded number of active uploads.
 const CHUNK_SIZE = 1;
+const UPLOAD_CONCURRENCY = 2;
 const POLL_MS = 700;
 const STALL_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -101,16 +102,29 @@ export default function Upload({ categoryId, onComplete }) {
     const failures = [];
     let transferred = 0;
 
-    for (const batch of chunks(files)) {
-      try {
-        const result = await sendChunk(batch);
-        batchIds.push(result.batchId);
-      } catch (error) {
-        batch.forEach(file => failures.push({ name: file.name, reason: error.message }));
+    const batches = chunks(files);
+    let nextBatch = 0;
+
+    async function uploadWorker() {
+      while (nextBatch < batches.length) {
+        const batch = batches[nextBatch];
+        nextBatch += 1;
+        try {
+          const result = await sendChunk(batch);
+          batchIds.push(result.batchId);
+        } catch (error) {
+          batch.forEach(file => failures.push({ name: file.name, reason: error.message }));
+        }
+        transferred += batch.length;
+        setProgress({ label: 'Uploading photos', done: transferred / 2, total: files.length });
       }
-      transferred += batch.length;
-      setProgress({ label: 'Uploading photos', done: transferred / 2, total: files.length });
     }
+
+    // This awaits a fixed number of workers, never one promise per file.
+    await Promise.all(Array.from(
+      { length: Math.min(UPLOAD_CONCURRENCY, batches.length) },
+      uploadWorker,
+    ));
 
     if (batchIds.length) {
       setProgress(current => ({ ...current, label: 'Processing photos' }));

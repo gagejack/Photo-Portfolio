@@ -8,16 +8,29 @@ process them without making the upload request wait for image conversion.
 ## Current behavior
 
 - The browser creates a one-photo upload request for each selected file.
-- It sends one request and waits for it to be safely queued before sending the
-  next.
-- The server stages a complete chunk to disk, then queues its photos for
+- It keeps at most two one-photo requests active at once.
+- The server stages each file to disk, then queues it for
   background processing.
 - The background queue can process up to four photos at once.
 
-The immediate bottleneck is the serial transfer loop: only one HTTP upload
-request is active at a time. The uploader intentionally sends one photo per
-request for reliability, so a failed multipart request cannot fail an entire
-multi-photo selection.
+The uploader intentionally sends one photo per request for reliability, so a
+failed multipart request cannot fail an entire multi-photo selection. A
+two-worker client queue improves transfer throughput while keeping that
+failure isolation.
+
+## Progress so far
+
+- [x] Changed the client uploader to one file per request.
+- [x] Added a bounded two-worker upload queue.
+- [x] Confirmed that a batch continues after individual failures: 14 photos
+      uploaded and 3 did not.
+- [ ] Complete a timed, log-correlated baseline run before tuning throughput.
+- [ ] Identify the failed PNG filenames and verify or re-export them before
+      treating the failures as an upload problem.
+
+The observed `vipspng: libpng read error` is emitted while Sharp/libvips
+decodes a PNG after it reaches the server. It is an image-file decoding failure,
+not evidence that the upload queue failed.
 
 ## Implementation order
 
@@ -40,8 +53,8 @@ images, and have a number to compare each change against.
 #### Baseline runbook
 
 Run this against the deployed app at `https://gagejack.com` before changing
-the uploader. Use the same 20 representative camera photos for every later
-comparison; record the exact file count, total bytes, and largest file.
+the uploader further. Use the same 20 representative camera photos for every
+later comparison; record the exact file count, total bytes, and largest file.
 
 1. Connect to the production server and start a live service-log tail:
 
@@ -72,69 +85,67 @@ comparison; record the exact file count, total bytes, and largest file.
 
 5. Save a screenshot or HAR export of the filtered Network waterfall and copy
    the values into the results table below. These are the comparison point for
-   Step 2.
+   future performance changes.
 
 | Field | Baseline result |
 | --- | --- |
 | Test date/time | |
 | Deployed revision | |
 | Connection type | |
-| Photo count | 20 |
+| Photo count | 17 in initial reliability test; use 20 for the timed baseline |
 | Total bytes | |
 | Largest file | |
 | Active upload requests (maximum) | |
 | Browser transfer phase duration | |
 | Server request duration(s) | |
 | Selection-to-complete duration | |
-| Successful / failed photos | |
+| Successful / failed photos | 14 / 3 in initial reliability test |
 | Network waterfall saved | |
-| Notes | |
+| Notes | Failed files reported `vipspng: libpng read error`; capture filenames and timings in the next run. |
 
 **Baseline acceptance criteria:** The recorded waterfall shows whether only
-one `POST /admin/upload` is active at once, every browser upload ID can be
-matched to a service-log entry, and the table is complete before Step 2 begins.
+no more than two `POST /admin/upload` requests are active at once, every
+browser upload ID can be matched to a service-log entry, and the table is
+complete before considering further upload concurrency.
 
-### 2. Add bounded parallel upload requests
+### 2. Resolve image-decoding failures
 
-- [ ] Replace the serial `for ... await sendChunk(...)` transfer loop in
-      `public/js/upload.js` with a small worker pool.
-- [ ] Start with `UPLOAD_CONCURRENCY = 2` active requests.
-- [ ] Keep a fixed upper bound; do not use `Promise.all()` for an unrestricted
-      number of chunks.
-- [ ] Preserve per-chunk failures so one failed request does not abandon the
-      rest of the selection.
-- [ ] Keep collecting every returned `batchId` for the existing processing
-      status polling.
+- [ ] Record the exact names of files that return `vipspng: libpng read error`.
+- [ ] Open each failed source PNG locally. If it opens, re-export it as PNG or
+      JPEG and retry that copy; if it cannot open, replace the damaged source.
+- [ ] Confirm retries of valid exports succeed through the one-file queue.
+- [ ] Improve the UI later to show every failed filename and its decoder error.
 
-**Why:** Two requests allow the browser to begin the next chunk while the
-first is still transferring. An unrestricted number can overwhelm a slow
-uplink, the server, or the hosting request limit.
+**Why:** These failures occur after the upload reaches the server. Retrying the
+same invalid PNG or increasing upload concurrency will not repair it.
 
-**Verify:** Select 20 photos. DevTools should show no more than two active
-upload requests, and the total transfer phase should improve over the
-baseline.
+### 3. Verify the bounded parallel one-file queue
 
-### 3. Tune chunk size before raising concurrency
+- [x] Use a two-worker pool with `UPLOAD_CONCURRENCY = 2`.
+- [x] Keep one photo per request and retain per-file failure collection.
+- [ ] Compare the two-worker queue with the serial baseline on a 20-photo
+      production test; retain it only if it improves total time without
+      increasing failures.
 
-- [ ] Change `CHUNK_SIZE` from 10 to 3 or 5.
-- [ ] Test 3 files × 2 requests first.
-- [ ] Compare it with 5 files × 2 requests using the same test batch.
-- [ ] Choose the fastest reliable setting, not automatically the most
-      concurrent one.
+**Why:** This improves throughput while preserving failure isolation. It is
+bounded so it does not create an unlimited number of Cloudflare requests.
 
-**Why:** With smaller chunks, photos reach the server queue sooner and a
-dropped request needs fewer photos to be retried. Smaller chunks also reduce
-the chance a request reaches the hosting timeout.
+### 4. Optional: tune upload concurrency
+
+- [ ] Keep `CHUNK_SIZE = 1`.
+- [ ] Test two concurrent requests, then three only if two is stable and the
+      connection and server are underutilized.
+- [ ] Stop at the fastest reliable setting; do not use unlimited `Promise.all`.
 
 **Recommended starting values:**
 
-| Setting | Starting value |
+| Setting | Current / starting value |
 | --- | --- |
-| Files per chunk | 3 |
-| Concurrent upload requests | 2 |
+| Files per request | 1 |
+| Concurrent upload requests | 2 now; test 3 later |
 | Concurrent processing jobs | 2-4 |
 
-### 4. Show separate transfer and processing progress
+### 5. Show separate transfer and processing progress
 
 - [ ] Show `Uploading 8 / 20` while browser-to-server transfer is happening.
 - [ ] Show `Processing 8 / 20` once a server batch is queued.
@@ -148,7 +159,7 @@ states prevent a healthy background queue from looking frozen.
 **Verify:** Throttle network in DevTools, then separately test fast network
 with large images. The UI should accurately reveal which phase is slow.
 
-### 5. Measure and tune image processing safely
+### 6. Measure and tune image processing safely
 
 - [ ] Time `processUpload` per photo and log the result during a test run.
 - [ ] Confirm the server has enough CPU and memory for the selected queue
@@ -165,7 +176,7 @@ decode already consumes substantial CPU and memory.
 **Verify:** During a 20-photo upload, several jobs should make progress at
 once, with no process restarts, out-of-memory events, or failed images.
 
-### 6. Avoid unnecessary memory and disk work
+### 7. Avoid unnecessary memory and disk work
 
 - [ ] Keep incoming multipart uploads on disk rather than buffering the whole
       batch in server memory.
@@ -180,7 +191,7 @@ decoded than their file size suggests.
 **Verify:** Upload a large batch and confirm memory stays stable after the
 batch completes and the staging directory is empty.
 
-### 7. Add resilience for real-world network failures
+### 8. Add resilience for real-world network failures
 
 - [ ] Retry transient failures (network interruption, 429, and selected 5xx
       responses) with exponential backoff and a small retry limit.
@@ -195,7 +206,7 @@ batch completes and the staging directory is empty.
 **Verify:** Simulate offline mode during a batch. Successful files should
 remain successful, and only interrupted files should require a retry.
 
-### 8. Move large-scale transfers off the app server (future)
+### 9. Move large-scale transfers off the app server (future)
 
 - [ ] Store originals in object storage.
 - [ ] Have the server issue short-lived, scoped signed upload URLs.
@@ -216,16 +227,21 @@ limiting factor.
 ## Acceptance test
 
 - [ ] Upload 20 representative photos in one selection.
-- [ ] At most two upload HTTP requests run at once.
+- [ ] No more than two upload HTTP requests run at once in the current
+      configuration.
 - [ ] The user can see distinct uploading and processing states.
 - [ ] Every successful file appears exactly once.
 - [ ] A single failed file does not stop the rest of the batch.
-- [ ] Total time is better than the baseline, with no increase in failures.
+- [ ] PNG decoder failures name the affected file and are handled separately
+      from network failures.
+- [ ] If parallel one-file uploads are enabled later, total time is better than
+      the serial baseline with no increase in failures.
 - [ ] Repeat the test on a slower connection before deploying.
 
 ## Do not do
 
 - Do not launch unlimited concurrent uploads.
+- Do not restore multi-file multipart uploads merely to increase speed.
 - Do not process images inside the HTTP upload request.
 - Do not increase worker counts without measuring CPU, memory, and throughput.
 - Do not report completion merely because the browser finished sending bytes;
