@@ -87,7 +87,6 @@ function PhotoCard({ photo, categories, onChanged }) {
   }
 
   async function remove() {
-    if (!window.confirm('Delete this photo permanently?')) return;
     await api(`/api/admin/photos/${photo.id}`, { method: 'DELETE' });
     onChanged();
   }

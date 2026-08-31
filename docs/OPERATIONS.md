@@ -63,7 +63,7 @@ journalctl -u photoportfolio --since "1 hour ago" --no-pager
 
 ```bash
 cd /opt/photoportfolio
-git pull
+git pull origin main
 npm ci
 npm run build
 npm prune --omit=dev
