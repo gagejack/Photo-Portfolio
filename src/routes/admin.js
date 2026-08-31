@@ -71,7 +71,7 @@ function renderAdmin({ db, activeId }) {
     scripts: ['/js/upload.js'],
     body: `
 <div class="admin-top">
-  <div class="brand">Gage Jack <span class="dim">/ admin</span></div>
+  <a class="brand" href="/">Gage Jack <span class="dim">/ admin</span></a>
   <form method="post" action="/admin/logout"><button type="submit">Log out</button></form>
 </div>
 <div class="admin-cols">

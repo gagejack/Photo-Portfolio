@@ -163,6 +163,19 @@ Through the admin panel only — `https://gagejack.com/admin`, log in as
 content hash, so re-uploading the same file overwrites its own derivatives
 rather than creating a duplicate.
 
+### Rebuild existing thumbnails
+
+New uploads create 800px thumbnails. After deploying that change, rebuild the
+existing thumbnail files once so high-density screens receive the same quality:
+
+```bash
+cd /opt/photoportfolio
+npm run rebuild-thumbnails -- /opt/photoportfolio/data/photos
+```
+
+This only overwrites `data/photos/thumb/`; originals and 2560px display files
+are untouched. It can be run again safely.
+
 ### Debug an interrupted upload
 
 Open the browser's developer console before retrying, then tail the service

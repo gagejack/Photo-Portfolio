@@ -92,7 +92,8 @@ export function authRouter(config) {
   });
 
   router.post('/admin/logout', (req, res) => {
-    req.session.destroy(() => res.redirect('/admin/login'));
+    const returnTo = req.body?.returnTo === '/' ? '/' : '/admin/login';
+    req.session.destroy(() => res.redirect(returnTo));
   });
 
   return router;

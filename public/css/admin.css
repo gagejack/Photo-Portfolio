@@ -59,7 +59,7 @@ a { color: inherit; text-decoration: none; }
   background: #ececec; border-radius: 2px; overflow: hidden;
 }
 .up-fill {
-  height: 100%; width: 0; background: #333;
+  display: block; height: 100%; width: 0; background: #333;
   transition: width .2s ease;
 }
 .up-count {

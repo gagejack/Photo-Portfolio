@@ -6,7 +6,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { extractDate } from './exif.js';
 
-const THUMB_WIDTH = 400;
+const THUMB_WIDTH = 800;
 const DISPLAY_WIDTH = 2560;
 
 // sharp defaults to `effort: 4`. On a 2560px encode that costs roughly 600ms

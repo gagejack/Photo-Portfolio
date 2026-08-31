@@ -46,7 +46,7 @@ test('derivatives are resized and the original is untouched', async () => {
   const r = await processUpload({ buffer: buf, mtime: new Date(), photosRoot: root });
   const p = photoPaths(root, r.filename);
 
-  assert.equal((await sharp(p.thumb).metadata()).width, 400);
+  assert.equal((await sharp(p.thumb).metadata()).width, 800);
   assert.equal((await sharp(p.display).metadata()).width, 2400); // under the 2560 cap, not upscaled
   assert.equal((await sharp(p.original).metadata()).width, 2400);
   rmSync(root, { recursive: true, force: true });
@@ -74,7 +74,7 @@ test('the display variant is capped at 2560px', async () => {
   const r = await processUpload({ buffer: await jpeg(6000, 4000), mtime: new Date(), photosRoot: root });
   const p = photoPaths(root, r.filename);
   assert.equal((await sharp(p.display).metadata()).width, 2560);
-  assert.equal((await sharp(p.thumb).metadata()).width, 400);
+  assert.equal((await sharp(p.thumb).metadata()).width, 800);
   rmSync(root, { recursive: true, force: true });
 });
 

@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import argon2 from 'argon2';
 import { openDb } from '../../src/db/index.js';
 import { createCategory } from '../../src/db/categories.js';
 import { insertPhoto, setPhotoCategories } from '../../src/db/photos.js';
@@ -24,7 +25,7 @@ function seeded() {
 const config = {
   sessionSecret: 's'.repeat(32),
   adminUser: 'g',
-  adminHash: 'x',
+  adminHash: await argon2.hash('correct-horse', { type: argon2.argon2id }),
   photosRoot: '/tmp/nope',
   maxUploadBytes: 1000,
 };
@@ -45,6 +46,39 @@ test('the feed renders the nav and every photo', async () => {
   assert.match(html, /Other Projects/);
   assert.match(html, /\/photos\/thumb\/a\.webp/);
   assert.match(html, /\/photos\/thumb\/c\.webp/);
+  assert.match(html, /srcset="\/photos\/thumb\/a\.webp 800w, \/photos\/display\/a\.webp 2560w"/);
+  server.close();
+  db.close();
+});
+
+test('an authenticated visitor can traverse between the public grid and admin', async () => {
+  const { db } = seeded();
+  const { server, base } = await listen(createApp({ db, config }));
+  const login = await fetch(`${base}/admin/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: 'username=g&password=correct-horse',
+    redirect: 'manual',
+  });
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+
+  const publicHtml = await (await fetch(`${base}/`, { headers: { cookie } })).text();
+  assert.match(publicHtml, /<a class="admin-link" href="\/admin">Admin<\/a>/);
+  assert.match(publicHtml, /<form class="logout" method="post" action="\/admin\/logout">/);
+
+  const adminHtml = await (await fetch(`${base}/admin`, { headers: { cookie } })).text();
+  assert.match(adminHtml, /<a class="brand" href="\/">Gage Jack/);
+
+  const logout = await fetch(`${base}/admin/logout`, {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
+    body: 'returnTo=%2F',
+    redirect: 'manual',
+  });
+  assert.equal(logout.headers.get('location'), '/');
+
+  const afterLogout = await fetch(`${base}/admin`, { headers: { cookie }, redirect: 'manual' });
+  assert.equal(afterLogout.headers.get('location'), '/admin/login');
   server.close();
   db.close();
 });
