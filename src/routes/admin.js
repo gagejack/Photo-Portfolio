@@ -1,7 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import { mkdirSync } from 'node:fs';
-import { readFile, unlink } from 'node:fs/promises';
+import { readFile, statfs, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { requireApiAuth } from './auth.js';
 import { processUpload, removePhotoFiles, stagingDir } from '../images/pipeline.js';
@@ -10,7 +10,9 @@ import {
   insertPhoto, listPhotos, getPhoto, deletePhoto, photoCategoryIds,
   setPhotoCategories, updatePhoto,
 } from '../db/photos.js';
-import { listTree, createCategory, deleteCategory } from '../db/categories.js';
+import {
+  listTree, createCategory, deleteCategory, renameCategory, CategoryChildrenLimitError,
+} from '../db/categories.js';
 
 const slugify = value => String(value).toLowerCase().trim()
   .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -34,6 +36,25 @@ function uploadMtime(value) {
   // outside the UI may omit or corrupt it, in which case retaining today's
   // fallback is safer than sending an invalid timestamp to the database.
   return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+async function storageUsage(path) {
+  try {
+    const stats = await statfs(path);
+    const blockSize = Number(stats.frsize || stats.bsize);
+    const totalBytes = Number(stats.blocks) * blockSize;
+    const freeBytes = Number(stats.bavail) * blockSize;
+    return {
+      totalBytes,
+      // Use filesystem blocks available to this service account, so the bar
+      // accurately describes the space uploads can still consume.
+      usedBytes: totalBytes - freeBytes,
+      freeBytes,
+    };
+  } catch (error) {
+    console.warn('[storage] unable to read filesystem usage', error.message);
+    return null;
+  }
 }
 
 export function adminRouter({ db, config }) {
@@ -126,7 +147,7 @@ export function adminRouter({ db, config }) {
     },
   });
 
-  router.get('/api/admin', requireApiAuth, (req, res) => {
+  router.get('/api/admin', requireApiAuth, async (req, res) => {
     const categories = listTree(db);
     const flat = flatten(categories);
     const requestedId = req.query.categoryId ? Number(req.query.categoryId) : null;
@@ -134,7 +155,8 @@ export function adminRouter({ db, config }) {
     if (requestedId && !active) return res.status(404).json({ error: 'Category not found' });
     const photos = listPhotos(db, active ? { categoryId: active.id } : {})
       .map(photo => ({ ...photo, categoryIds: photoCategoryIds(db, photo.id) }));
-    return res.json({ photos, categories, activeCategoryId: active?.id ?? null });
+    const storage = await storageUsage(config.photosRoot);
+    return res.json({ photos, categories, activeCategoryId: active?.id ?? null, storage });
   });
 
   router.patch('/api/admin/photos/:id', requireApiAuth, (req, res) => {
@@ -170,17 +192,34 @@ export function adminRouter({ db, config }) {
     const name = String(body.name ?? '').trim();
     const slug = slugify(name);
     if (!name || !slug) return res.status(400).json({ error: 'Category name is required' });
+    const parentId = body.parentId === null || body.parentId === undefined || body.parentId === ''
+      ? null
+      : Number(body.parentId);
+    if (parentId !== null && !Number.isInteger(parentId)) {
+      return res.status(400).json({ error: 'Invalid parent category' });
+    }
     try {
       const id = createCategory(db, {
         name,
         slug,
-        parentId: body.parentId ? Number(body.parentId) : null,
+        parentId,
         flag: body.flag ? String(body.flag).toLowerCase().slice(0, 2) : null,
       });
       return res.status(201).json({ id });
     } catch (error) {
-      return res.status(400).json({ error: error.message });
+      return res.status(error instanceof CategoryChildrenLimitError ? 409 : 400).json({ error: error.message });
     }
+  });
+
+  router.patch('/api/admin/categories/:id', requireApiAuth, (req, res) => {
+    const id = Number(req.params.id);
+    const category = flatten(listTree(db)).find(node => node.id === id);
+    if (!category) return res.status(404).json({ error: 'Category not found' });
+
+    const name = String(req.body?.name ?? '').trim();
+    if (!name) return res.status(400).json({ error: 'Category name is required' });
+    renameCategory(db, id, name);
+    return res.json({ ...category, name });
   });
 
   router.delete('/api/admin/categories/:id', requireApiAuth, (req, res) => {

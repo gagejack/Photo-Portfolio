@@ -1,13 +1,38 @@
 // src/db/categories.js
 
+export const MAX_CATEGORY_CHILDREN = 3;
+
+export class CategoryChildrenLimitError extends Error {
+  constructor() {
+    super(`A category can have at most ${MAX_CATEGORY_CHILDREN} subcategories`);
+  }
+}
+
 export function createCategory(db, { name, slug, parentId = null, flag = null }) {
-  const pos = db.prepare(
-    'SELECT COALESCE(MAX(position), -1) + 1 AS p FROM categories WHERE parent_id IS ?'
-  ).get(parentId).p;
-  const info = db.prepare(
-    'INSERT INTO categories (name, slug, parent_id, flag, position) VALUES (?,?,?,?,?)'
-  ).run(name, slug, parentId, flag, pos);
-  return Number(info.lastInsertRowid);
+  // Keep the limit alongside the write and inside a transaction. The sidebar
+  // disables the action at three children too, but this makes the rule hold
+  // for direct API calls and concurrent requests as well.
+  const insert = db.transaction(() => {
+    if (parentId !== null) {
+      const parent = db.prepare('SELECT 1 FROM categories WHERE id = ?').get(parentId);
+      if (!parent) throw new Error('Parent category not found');
+
+      const childCount = db.prepare(
+        'SELECT COUNT(*) AS count FROM categories WHERE parent_id = ?'
+      ).get(parentId).count;
+      if (childCount >= MAX_CATEGORY_CHILDREN) throw new CategoryChildrenLimitError();
+    }
+
+    const pos = db.prepare(
+      'SELECT COALESCE(MAX(position), -1) + 1 AS p FROM categories WHERE parent_id IS ?'
+    ).get(parentId).p;
+    const info = db.prepare(
+      'INSERT INTO categories (name, slug, parent_id, flag, position) VALUES (?,?,?,?,?)'
+    ).run(name, slug, parentId, flag, pos);
+    return Number(info.lastInsertRowid);
+  });
+
+  return insert();
 }
 
 // Recursive CTE: walk down from the given id, collecting every descendant.

@@ -72,6 +72,20 @@ test('the admin data API requires authentication', async () => {
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });
 
+test('the admin data API reports storage for the photo filesystem', async () => {
+  const { base, cookie, server, photosRoot, db } = await harness();
+  const response = await fetch(`${base}/api/admin`, { headers: { cookie } });
+  const { storage } = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.ok(storage.totalBytes > 0);
+  assert.ok(storage.usedBytes >= 0);
+  assert.ok(storage.freeBytes >= 0);
+  assert.equal(storage.usedBytes + storage.freeBytes, storage.totalBytes);
+
+  server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
+});
+
 test('uploading a photo creates one row and three files', async () => {
   const { db, base, cookie, server, photosRoot } = await harness();
   await uploadAndWait(base, cookie, [[await jpegBlob(), 'shot.jpg']]);
@@ -156,6 +170,39 @@ test('creating a category makes it visible in the public feed API', async () => 
   });
   const feed = await (await fetch(`${base}/api/feed`)).json();
   assert.equal(feed.categories[0].name, 'Urban');
+  server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
+});
+
+test('category actions rename categories and limit each parent to three children', async () => {
+  const { db, base, cookie, server, photosRoot } = await harness();
+  const create = async (name, parentId = null) => {
+    const response = await fetch(`${base}/api/admin/categories`, {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ name, parentId }),
+    });
+    return response;
+  };
+
+  const parent = await create('Main Category #1');
+  assert.equal(parent.status, 201);
+  const { id: parentId } = await parent.json();
+  for (const number of [1, 2, 3]) {
+    assert.equal((await create(`New Sub Category #${number}`, parentId)).status, 201);
+  }
+  const limit = await create('New Sub Category #4', parentId);
+  assert.equal(limit.status, 409);
+  assert.match((await limit.json()).error, /at most 3 subcategories/);
+
+  const rename = await fetch(`${base}/api/admin/categories/${parentId}`, {
+    method: 'PATCH',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Travel' }),
+  });
+  assert.equal(rename.status, 200);
+  assert.equal((await rename.json()).name, 'Travel');
+  assert.equal(listTree(db)[0].name, 'Travel');
+
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });
 

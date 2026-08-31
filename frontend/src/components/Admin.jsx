@@ -13,55 +13,100 @@ function flatten(nodes, output = []) {
   return output;
 }
 
-function CategoryTree({ nodes, depth = 0, activeId, onDelete }) {
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return 'Unavailable';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const unit = Math.min(Math.floor(Math.log(Math.max(bytes, 1)) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** unit;
+  return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
+}
+
+function StorageBar({ storage }) {
+  if (!storage) return null;
+  const percentUsed = storage.totalBytes > 0
+    ? Math.min(100, Math.max(0, (storage.usedBytes / storage.totalBytes) * 100))
+    : 0;
+  const label = `${formatBytes(storage.usedBytes)} used of ${formatBytes(storage.totalBytes)}; ${formatBytes(storage.freeBytes)} free`;
+
+  return (
+    <section className="storage-meter" aria-label={`Server storage: ${label}`}>
+      <div className="storage-label"><span>Server storage</span><strong>{formatBytes(storage.freeBytes)} free</strong></div>
+      <div
+        className="storage-track"
+        role="progressbar"
+        aria-label="Server storage used"
+        aria-valuemin="0"
+        aria-valuemax={storage.totalBytes}
+        aria-valuenow={storage.usedBytes}
+      >
+        <span className="storage-fill" style={{ width: `${percentUsed}%` }} />
+      </div>
+      <div className="storage-summary">{formatBytes(storage.usedBytes)} used of {formatBytes(storage.totalBytes)}</div>
+    </section>
+  );
+}
+
+function CategoryTree({
+  nodes,
+  depth = 0,
+  activeId,
+  openMenuId,
+  onToggleMenu,
+  onAddSubcategory,
+  onRename,
+  onDelete,
+}) {
   return nodes.map(node => (
     <div key={node.id}>
       <div className={`cat-row lvl${Math.min(depth, 3)} ${activeId === node.id ? 'active' : ''}`}>
-        <span className="arrow">{node.children.length ? '▸' : ''}</span>
+        <div className="category-actions">
+          <button
+            className="category-menu-button"
+            type="button"
+            title={`Edit ${node.name}`}
+            aria-label={`Edit ${node.name}`}
+            aria-haspopup="menu"
+            aria-expanded={openMenuId === node.id}
+            onClick={() => onToggleMenu(node.id)}
+          >
+            <span aria-hidden="true">☰</span>
+          </button>
+          {openMenuId === node.id && (
+            <div className="category-menu" role="menu" aria-label={`Actions for ${node.name}`}>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={node.children.length >= 3}
+                title={node.children.length >= 3 ? 'A category can have at most 3 subcategories' : undefined}
+                onClick={() => onAddSubcategory(node)}
+              >
+                Add subcategory
+              </button>
+              <button type="button" role="menuitem" onClick={() => onRename(node)}>Rename</button>
+              <button className="category-menu-delete" type="button" role="menuitem" onClick={() => onDelete(node)}>Delete</button>
+            </div>
+          )}
+        </div>
         <Flag code={node.flag} />
         <a href={`/admin?c=${node.id}`}>{node.name}</a>
         <span className="count">{node.photoCount}</span>
-        <button className="category-delete" type="button" title="Delete" aria-label={`Delete ${node.name}`} onClick={() => onDelete(node)}>&times;</button>
       </div>
-      {node.children.length > 0 && <div className="kids"><CategoryTree nodes={node.children} depth={depth + 1} activeId={activeId} onDelete={onDelete} /></div>}
+      {node.children.length > 0 && (
+        <div className="kids">
+          <CategoryTree
+            nodes={node.children}
+            depth={depth + 1}
+            activeId={activeId}
+            openMenuId={openMenuId}
+            onToggleMenu={onToggleMenu}
+            onAddSubcategory={onAddSubcategory}
+            onRename={onRename}
+            onDelete={onDelete}
+          />
+        </div>
+      )}
     </div>
   ));
-}
-
-function AddCategory({ categories, onCreated }) {
-  const [name, setName] = useState('');
-  const [parentId, setParentId] = useState('');
-  const [flag, setFlag] = useState('');
-  const [error, setError] = useState('');
-
-  async function submit(event) {
-    event.preventDefault();
-    setError('');
-    try {
-      await api('/api/admin/categories', {
-        method: 'POST',
-        body: { name, parentId: parentId || null, flag: flag || null },
-      });
-      setName('');
-      setFlag('');
-      onCreated();
-    } catch (requestError) {
-      setError(requestError.message);
-    }
-  }
-
-  return (
-    <form className="add-cat" onSubmit={submit}>
-      <input value={name} onChange={event => setName(event.target.value)} placeholder="New category" required />
-      <select value={parentId} onChange={event => setParentId(event.target.value)}>
-        <option value="">Top level</option>
-        {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
-      </select>
-      <input value={flag} onChange={event => setFlag(event.target.value)} placeholder="Flag (jp)" maxLength="2" />
-      <button type="submit">Add</button>
-      {error && <p className="error">{error}</p>}
-    </form>
-  );
 }
 
 function PhotoCard({ photo, categories, onChanged }) {
@@ -112,6 +157,7 @@ export default function Admin({ authenticated }) {
   const activeId = Number(new URLSearchParams(window.location.search).get('c')) || null;
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [openMenuId, setOpenMenuId] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -136,10 +182,45 @@ export default function Admin({ authenticated }) {
   }, [authenticated, load]);
 
   async function deleteCategory(category) {
+    setOpenMenuId(null);
     if (!window.confirm(`Delete “${category.name}” and all nested categories?`)) return;
-    await api(`/api/admin/categories/${category.id}`, { method: 'DELETE' });
-    if (activeId === category.id) window.location.assign('/admin');
-    else load();
+    try {
+      await api(`/api/admin/categories/${category.id}`, { method: 'DELETE' });
+      if (activeId === category.id) window.location.assign('/admin');
+      else load();
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }
+
+  async function createCategory(name, parentId = null) {
+    setOpenMenuId(null);
+    try {
+      await api('/api/admin/categories', { method: 'POST', body: { name, parentId } });
+      await load();
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }
+
+  function addMainCategory() {
+    createCategory(`Main Category #${data.categories.length + 1}`);
+  }
+
+  function addSubcategory(category) {
+    createCategory(`New Sub Category #${category.children.length + 1}`, category.id);
+  }
+
+  async function renameCategory(category) {
+    setOpenMenuId(null);
+    const name = window.prompt('Rename category', category.name);
+    if (name === null || name.trim() === '' || name.trim() === category.name) return;
+    try {
+      await api(`/api/admin/categories/${category.id}`, { method: 'PATCH', body: { name: name.trim() } });
+      await load();
+    } catch (requestError) {
+      setError(requestError.message);
+    }
   }
 
   const categories = data ? flatten(data.categories) : [];
@@ -150,12 +231,32 @@ export default function Admin({ authenticated }) {
       <Nav active="admin" authenticated />
       <div className="admin-cols">
         <aside className="side">
-          {data && <CategoryTree nodes={data.categories} activeId={activeId} onDelete={deleteCategory} />}
-          {data && <AddCategory categories={categories} onCreated={load} />}
+          {data && (
+            <>
+              <div className="category-header">
+                <span>Categories</span>
+                <button className="add-main-category" type="button" title="Add main category" aria-label="Add main category" onClick={addMainCategory}>+</button>
+              </div>
+              <CategoryTree
+                nodes={data.categories}
+                activeId={activeId}
+                openMenuId={openMenuId}
+                onToggleMenu={id => setOpenMenuId(current => current === id ? null : id)}
+                onAddSubcategory={addSubcategory}
+                onRename={renameCategory}
+                onDelete={deleteCategory}
+              />
+            </>
+          )}
         </aside>
         <main className="admin-main">
-          <h1>{active?.name ?? 'All photos'}</h1>
-          <div className="crumb">{data ? `${data.photos.length} photos` : 'Loading…'}</div>
+          <div className="admin-heading">
+            <div>
+              <h1>{active?.name ?? 'All photos'}</h1>
+              <div className="crumb">{data ? `${data.photos.length} photos` : 'Loading…'}</div>
+            </div>
+            {data && <StorageBar storage={data.storage} />}
+          </div>
           {error && <p className="error-state">{error}</p>}
           {data && <Upload categoryId={activeId} onComplete={load} />}
           {data && (

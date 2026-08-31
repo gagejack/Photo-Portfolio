@@ -3,7 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDb } from '../../src/db/index.js';
 import {
-  createCategory, listTree, descendantIds, deleteCategory, reparentCategory, renameCategory
+  createCategory, listTree, descendantIds, deleteCategory, reparentCategory, renameCategory,
+  CategoryChildrenLimitError,
 } from '../../src/db/categories.js';
 
 function fixture() {
@@ -81,5 +82,19 @@ test('createCategory auto-increments position for siblings, resets for different
   assert.equal(c1a, 0);
   assert.equal(c1b, 1);
   assert.equal(c2a, 0);
+  db.close();
+});
+
+test('a category cannot have more than three direct children', () => {
+  const db = openDb(':memory:');
+  const parent = createCategory(db, { name: 'Parent', slug: 'parent' });
+  for (const suffix of ['a', 'b', 'c']) {
+    createCategory(db, { name: suffix, slug: suffix, parentId: parent });
+  }
+
+  assert.throws(
+    () => createCategory(db, { name: 'd', slug: 'd', parentId: parent }),
+    CategoryChildrenLimitError,
+  );
   db.close();
 });
