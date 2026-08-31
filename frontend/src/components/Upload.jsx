@@ -28,6 +28,10 @@ export default function Upload({ categoryId, onComplete }) {
   async function sendChunk(files) {
     const body = new FormData();
     files.forEach(file => body.append('photos', file));
+    // Each chunk currently contains one file. Send its browser-provided
+    // last-modified time so the server does not mistake staging time for the
+    // date of an image that has no EXIF capture date.
+    body.append('mtime', String(files[0].lastModified));
     if (categoryId) body.append('categoryId', categoryId);
     const uploadId = crypto.randomUUID();
     const bytes = files.reduce((total, file) => total + file.size, 0);

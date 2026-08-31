@@ -28,6 +28,14 @@ function uploadDebugId(req) {
   return supplied && /^[a-zA-Z0-9-]{1,80}$/.test(supplied) ? supplied : randomUUID();
 }
 
+function uploadMtime(value) {
+  const date = new Date(Number(value));
+  // `lastModified` is supplied by the browser in milliseconds. Requests made
+  // outside the UI may omit or corrupt it, in which case retaining today's
+  // fallback is safer than sending an invalid timestamp to the database.
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
 export function adminRouter({ db, config }) {
   const router = express.Router();
   const staging = stagingDir(config.photosRoot);
@@ -79,12 +87,15 @@ export function adminRouter({ db, config }) {
   }
 
   const queue = createQueue({
-    async processJob({ path, name, categoryId }) {
+    async processJob({ path, name, categoryId, mtime }) {
+      const startedAt = Date.now();
+      let inputBytes = 0;
       try {
         const buffer = await readFile(path);
+        inputBytes = buffer.byteLength;
         const metadata = await processUpload({
           buffer,
-          mtime: new Date(),
+          mtime,
           photosRoot: config.photosRoot,
         });
         try {
@@ -94,6 +105,21 @@ export function adminRouter({ db, config }) {
           removePhotoFiles(config.photosRoot, metadata.filename);
           throw databaseError;
         }
+        console.info('[upload] photo processed', {
+          name,
+          inputBytes,
+          width: metadata.width,
+          height: metadata.height,
+          elapsedMs: Date.now() - startedAt,
+        });
+      } catch (error) {
+        console.error('[upload] photo processing failed', {
+          name,
+          inputBytes,
+          elapsedMs: Date.now() - startedAt,
+          error: error.message,
+        });
+        throw error;
       } finally {
         await unlink(path).catch(() => {});
       }
@@ -168,6 +194,7 @@ export function adminRouter({ db, config }) {
         path: file.path,
         name: file.originalname,
         categoryId: req.body.categoryId,
+        mtime: uploadMtime(req.body.mtime),
       })),
     );
     return res.status(202).json({ batchId, total });

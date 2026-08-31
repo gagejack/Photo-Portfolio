@@ -84,6 +84,22 @@ test('uploading a photo creates one row and three files', async () => {
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });
 
+test('an image without EXIF keeps the client file modification date', async () => {
+  const { db, base, cookie, server, photosRoot } = await harness();
+  const form = new FormData();
+  form.append('photos', await jpegBlob(), 'old-shot.jpg');
+  form.append('mtime', '1709640000000'); // 2024-03-05T12:00:00.000Z
+  const res = await fetch(`${base}/admin/upload`, { method: 'POST', headers: { cookie }, body: form });
+  const { batchId } = await res.json();
+  await waitForBatch(base, cookie, batchId);
+
+  const [photo] = listPhotos(db, {});
+  assert.equal(photo.dateSource, 'mtime');
+  assert.equal(photo.takenAt, '2024-03-05T12:00:00.000Z');
+
+  server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
+});
+
 test('uploading a non-image is reported without creating a row', async () => {
   const { db, base, cookie, server, photosRoot } = await harness();
   const status = await uploadAndWait(base, cookie, [

@@ -161,7 +161,10 @@ with large images. The UI should accurately reveal which phase is slow.
 
 ### 6. Measure and tune image processing safely
 
-- [ ] Time `processUpload` per photo and log the result during a test run.
+- [x] Log each queued photo's input bytes, output dimensions, and total
+      processing time; log the same timing for failures.
+- [ ] Review those production logs during a 20-photo run before changing the
+      processing-worker limit.
 - [ ] Confirm the server has enough CPU and memory for the selected queue
       concurrency.
 - [ ] Test queue concurrency at 2, then 3, then 4; stop increasing it when
