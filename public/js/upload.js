@@ -6,10 +6,15 @@
   const drop = form.querySelector('.drop');
   const progress = document.getElementById('progress');
 
-  // Cloudflare caps a single request at 100s. Large batches of full-size
-  // camera JPEGs resize slower than that server-side, so upload a few at a
-  // time in separate requests rather than one all-or-nothing POST.
-  const CHUNK_SIZE = 3;
+  // Processing no longer happens inside the request, so a chunk only has to
+  // survive its own transfer time against Cloudflare's 100s cap. Chunking is
+  // kept so a dropped connection costs ten photos rather than the whole batch.
+  const CHUNK_SIZE = 10;
+
+  const POLL_MS = 700;
+  // If nothing advances for this long, something is wrong server-side and the
+  // poll should stop rather than spin forever.
+  const STALL_TIMEOUT_MS = 10 * 60 * 1000;
 
   function chunk(arr, n) {
     const out = [];
@@ -45,28 +50,94 @@
       count: row.querySelector('.up-count'),
       update(done) {
         this.fill.style.width = `${Math.round((done / total) * 100)}%`;
-        this.count.textContent = `${done} / ${total}`;
+        this.count.textContent = `${Math.round(done)} / ${total}`;
       },
     };
+  }
+
+  async function fetchStatus(batchId) {
+    const res = await fetch(`/admin/upload/status/${batchId}`);
+    if (!res.ok) throw new Error(`status ${res.status}`);
+    return res.json();
+  }
+
+  // Poll every batch until all of them report finished, reporting combined
+  // progress. Returns the failures collected across all of them.
+  async function awaitProcessing(batchIds, onProgress) {
+    const failed = [];
+    const pending = new Set(batchIds);
+    let lastProgress = 0;
+    let lastChange = Date.now();
+
+    while (pending.size > 0) {
+      await new Promise(r => setTimeout(r, POLL_MS));
+
+      let done = 0;
+      for (const batchId of [...pending]) {
+        let status;
+        try {
+          status = await fetchStatus(batchId);
+        } catch {
+          // A transient failure should not abandon the batch; the stall
+          // timeout below is what gives up.
+          continue;
+        }
+        done += status.done + status.failed.length;
+        if (status.finished) {
+          failed.push(...status.failed);
+          pending.delete(batchId);
+        }
+      }
+
+      onProgress(done);
+
+      if (done !== lastProgress) {
+        lastProgress = done;
+        lastChange = Date.now();
+      } else if (Date.now() - lastChange > STALL_TIMEOUT_MS) {
+        throw new Error('processing stalled — check the server');
+      }
+    }
+    return failed;
   }
 
   async function send(files) {
     if (!files.length) return;
 
     const batches = chunk(files, CHUNK_SIZE);
-    let done = 0;
-    const allFailed = [];
     const bar = showBar(files.length);
+    const batchIds = [];
+    const allFailed = [];
+    let transferred = 0;
 
+    // Phase 1: transfer. The bar covers 0-50%.
+    bar.label.textContent = 'Uploading photos';
     for (const batch of batches) {
       try {
-        const result = await sendChunk(batch);
-        allFailed.push(...(result.failed ?? []));
+        const { batchId } = await sendChunk(batch);
+        batchIds.push(batchId);
       } catch (err) {
         for (const f of batch) allFailed.push({ name: f.name, reason: err.message });
       }
-      done += batch.length;
-      bar.update(done);
+      transferred += batch.length;
+      bar.update(transferred / 2);
+    }
+
+    // Phase 2: processing. The bar covers 50-100%. Transfer and processing are
+    // genuinely two different waits — on a slow connection phase 1 dominates,
+    // on a fast one phase 2 does — so showing them separately beats a bar that
+    // sits at 100% during invisible server work.
+    if (batchIds.length) {
+      bar.label.textContent = 'Processing photos';
+      try {
+        const failed = await awaitProcessing(batchIds, done => {
+          bar.update(files.length / 2 + done / 2);
+        });
+        allFailed.push(...failed);
+      } catch (err) {
+        progress.textContent = `Upload interrupted: ${err.message}`;
+        return;
+      }
     }
 
     if (allFailed.length) {
