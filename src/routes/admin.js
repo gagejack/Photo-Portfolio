@@ -8,10 +8,10 @@ import { processUpload, removePhotoFiles, stagingDir } from '../images/pipeline.
 import { createQueue } from '../images/queue.js';
 import {
   insertPhoto, listPhotos, getPhoto, deletePhoto, photoCategoryIds,
-  setPhotoCategories, updatePhoto,
+  setPhotoCategories, addPhotoCategories, updatePhoto,
 } from '../db/photos.js';
 import {
-  listTree, createCategory, deleteCategory, renameCategory, CategoryChildrenLimitError,
+  listTree, createCategory, deleteCategory, renameCategory, ancestorIds, CategoryChildrenLimitError,
 } from '../db/categories.js';
 
 const slugify = value => String(value).toLowerCase().trim()
@@ -108,7 +108,7 @@ export function adminRouter({ db, config }) {
   }
 
   const queue = createQueue({
-    async processJob({ path, name, categoryId, mtime }) {
+    async processJob({ path, name, mtime }) {
       const startedAt = Date.now();
       let inputBytes = 0;
       try {
@@ -120,8 +120,7 @@ export function adminRouter({ db, config }) {
           photosRoot: config.photosRoot,
         });
         try {
-          const id = insertPhoto(db, metadata);
-          if (categoryId) setPhotoCategories(db, id, [Number(categoryId)]);
+          insertPhoto(db, metadata);
         } catch (databaseError) {
           removePhotoFiles(config.photosRoot, metadata.filename);
           throw databaseError;
@@ -222,6 +221,25 @@ export function adminRouter({ db, config }) {
     return res.json({ ...category, name });
   });
 
+  router.post('/api/admin/categories/:id/photos', requireApiAuth, (req, res) => {
+    const categoryId = Number(req.params.id);
+    const category = flatten(listTree(db)).find(node => node.id === categoryId);
+    if (!category) return res.status(404).json({ error: 'Category not found' });
+
+    const requestedIds = req.body?.photoIds;
+    if (!Array.isArray(requestedIds) || !requestedIds.every(Number.isInteger)) {
+      return res.status(400).json({ error: 'photoIds must be an array of photo IDs' });
+    }
+    const photoIds = [...new Set(requestedIds)];
+    if (photoIds.some(id => !getPhoto(db, id))) {
+      return res.status(404).json({ error: 'One or more photos were not found' });
+    }
+
+    const categoryIds = ancestorIds(db, categoryId);
+    addPhotoCategories(db, photoIds, categoryIds);
+    return res.json({ photoIds, categoryIds });
+  });
+
   router.delete('/api/admin/categories/:id', requireApiAuth, (req, res) => {
     deleteCategory(db, Number(req.params.id));
     return res.status(204).end();
@@ -232,7 +250,6 @@ export function adminRouter({ db, config }) {
       (req.files ?? []).map(file => ({
         path: file.path,
         name: file.originalname,
-        categoryId: req.body.categoryId,
         mtime: uploadMtime(req.body.mtime),
       })),
     );

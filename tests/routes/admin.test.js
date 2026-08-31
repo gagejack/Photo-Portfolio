@@ -8,8 +8,8 @@ import sharp from 'sharp';
 import { openDb } from '../../src/db/index.js';
 import { createApp } from '../../src/app.js';
 import { photoPaths, stagingDir } from '../../src/images/pipeline.js';
-import { listPhotos, getPhoto } from '../../src/db/photos.js';
-import { listTree } from '../../src/db/categories.js';
+import { listPhotos, getPhoto, insertPhoto, photoCategoryIds } from '../../src/db/photos.js';
+import { listTree, createCategory } from '../../src/db/categories.js';
 
 async function harness() {
   const photosRoot = mkdtempSync(join(tmpdir(), 'pp-admin-'));
@@ -206,6 +206,26 @@ test('category actions rename categories and limit each parent to three children
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });
 
+test('selecting photos for a subcategory also tags every parent category', async () => {
+  const { db, base, cookie, server, photosRoot } = await harness();
+  const main = createCategory(db, { name: 'Travel', slug: 'travel' });
+  const sub = createCategory(db, { name: 'Japan', slug: 'japan', parentId: main });
+  const photoId = insertPhoto(db, {
+    filename: 'selection.jpg', takenAt: '2026-01-01T00:00:00Z', dateSource: 'exif', width: 100, height: 100,
+  });
+
+  const response = await fetch(`${base}/api/admin/categories/${sub}/photos`, {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ photoIds: [photoId] }),
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).categoryIds, [sub, main]);
+  assert.deepEqual(photoCategoryIds(db, photoId), [main, sub]);
+
+  server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
+});
+
 test('photo metadata updates persist and are returned as JSON data', async () => {
   const { db, base, cookie, server, photosRoot } = await harness();
   await uploadAndWait(base, cookie, [[await jpegBlob(), 'shot.jpg']]);
@@ -295,7 +315,7 @@ test('an unknown batch id returns 404', async () => {
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });
 
-test('a photo uploaded into a category lands in that category', async () => {
+test('uploading ignores a submitted category so photos are categorized explicitly', async () => {
   const { db, base, cookie, server, photosRoot } = await harness();
   await fetch(`${base}/api/admin/categories`, {
     method: 'POST',
@@ -311,8 +331,8 @@ test('a photo uploaded into a category lands in that category', async () => {
   const { batchId } = await res.json();
   await waitForBatch(base, cookie, batchId);
 
-  assert.equal(listPhotos(db, { categoryId: category.id }).length, 1);
+  assert.equal(listPhotos(db, { categoryId: category.id }).length, 0);
   const admin = await (await fetch(`${base}/api/admin`, { headers: { cookie } })).json();
-  assert.deepEqual(admin.photos[0].categoryIds, [category.id]);
+  assert.deepEqual(admin.photos[0].categoryIds, []);
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });

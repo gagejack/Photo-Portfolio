@@ -53,6 +53,7 @@ function CategoryTree({
   openMenuId,
   onToggleMenu,
   onAddSubcategory,
+  onSelectPhotos,
   onRename,
   onDelete,
 }) {
@@ -82,6 +83,7 @@ function CategoryTree({
               >
                 Add subcategory
               </button>
+              <button type="button" role="menuitem" onClick={() => onSelectPhotos(node)}>Select photos</button>
               <button type="button" role="menuitem" onClick={() => onRename(node)}>Rename</button>
               <button className="category-menu-delete" type="button" role="menuitem" onClick={() => onDelete(node)}>Delete</button>
             </div>
@@ -100,6 +102,7 @@ function CategoryTree({
             openMenuId={openMenuId}
             onToggleMenu={onToggleMenu}
             onAddSubcategory={onAddSubcategory}
+            onSelectPhotos={onSelectPhotos}
             onRename={onRename}
             onDelete={onDelete}
           />
@@ -109,7 +112,7 @@ function CategoryTree({
   ));
 }
 
-function PhotoCard({ photo, categories, onChanged }) {
+function PhotoCard({ photo, categories, onChanged, selecting, selected, onToggleSelection }) {
   const [caption, setCaption] = useState(photo.caption ?? '');
   const [takenAt, setTakenAt] = useState(photo.takenAt.slice(0, 10));
   const [categoryIds, setCategoryIds] = useState(photo.categoryIds.map(String));
@@ -139,6 +142,17 @@ function PhotoCard({ photo, categories, onChanged }) {
   return (
     <article className="thumb">
       <img src={`/photos/thumb/${base}.webp`} alt={caption} loading="lazy" />
+      {selecting && (
+        <button
+          className={`photo-select ${selected ? 'selected' : ''}`}
+          type="button"
+          aria-label={`${selected ? 'Deselect' : 'Select'} photo`}
+          aria-pressed={selected}
+          onClick={() => onToggleSelection(photo.id)}
+        >
+          {selected ? '✓' : '+'}
+        </button>
+      )}
       <button className="x" type="button" aria-label="Delete photo" onClick={remove}>&times;</button>
       <form className="meta" onSubmit={save}>
         <input aria-label="Date taken" type="date" value={takenAt} onChange={event => setTakenAt(event.target.value)} />
@@ -158,6 +172,8 @@ export default function Admin({ authenticated }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [openMenuId, setOpenMenuId] = useState(null);
+  const [selectionCategory, setSelectionCategory] = useState(null);
+  const [selectedPhotoIds, setSelectedPhotoIds] = useState([]);
 
   const load = useCallback(async () => {
     try {
@@ -223,6 +239,37 @@ export default function Admin({ authenticated }) {
     }
   }
 
+  function selectPhotos(category) {
+    setOpenMenuId(null);
+    setSelectionCategory(category);
+    setSelectedPhotoIds([]);
+  }
+
+  function togglePhotoSelection(photoId) {
+    setSelectedPhotoIds(current => current.includes(photoId)
+      ? current.filter(id => id !== photoId)
+      : [...current, photoId]);
+  }
+
+  async function finishSelection() {
+    if (!selectionCategory) return;
+    if (selectedPhotoIds.length === 0) {
+      setSelectionCategory(null);
+      return;
+    }
+    try {
+      await api(`/api/admin/categories/${selectionCategory.id}/photos`, {
+        method: 'POST',
+        body: { photoIds: selectedPhotoIds },
+      });
+      setSelectionCategory(null);
+      setSelectedPhotoIds([]);
+      await load();
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }
+
   const categories = data ? flatten(data.categories) : [];
   const active = categories.find(category => category.id === activeId);
 
@@ -243,6 +290,7 @@ export default function Admin({ authenticated }) {
                 openMenuId={openMenuId}
                 onToggleMenu={id => setOpenMenuId(current => current === id ? null : id)}
                 onAddSubcategory={addSubcategory}
+                onSelectPhotos={selectPhotos}
                 onRename={renameCategory}
                 onDelete={deleteCategory}
               />
@@ -258,11 +306,27 @@ export default function Admin({ authenticated }) {
             {data && <StorageBar storage={data.storage} />}
           </div>
           {error && <p className="error-state">{error}</p>}
-          {data && <Upload categoryId={activeId} onComplete={load} />}
+          {data && <Upload onComplete={load} />}
+          {selectionCategory && (
+            <div className="selection-toolbar" aria-live="polite">
+              <span>Select photos to add to <strong>{selectionCategory.name}</strong>.</span>
+              <button type="button" onClick={finishSelection}>Done</button>
+            </div>
+          )}
           {data && (
             <div className="thumbs">
               {data.photos.length
-                ? data.photos.map(photo => <PhotoCard key={photo.id} photo={photo} categories={categories} onChanged={load} />)
+                ? data.photos.map(photo => (
+                  <PhotoCard
+                    key={photo.id}
+                    photo={photo}
+                    categories={categories}
+                    onChanged={load}
+                    selecting={Boolean(selectionCategory)}
+                    selected={selectedPhotoIds.includes(photo.id)}
+                    onToggleSelection={togglePhotoSelection}
+                  />
+                ))
                 : <p className="dim">Nothing here yet.</p>}
             </div>
           )}

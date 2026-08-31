@@ -18,7 +18,7 @@ function chunks(files) {
 
 const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
-export default function Upload({ categoryId, onComplete }) {
+export default function Upload({ onComplete }) {
   const input = useRef(null);
   const [over, setOver] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -32,7 +32,6 @@ export default function Upload({ categoryId, onComplete }) {
     // last-modified time so the server does not mistake staging time for the
     // date of an image that has no EXIF capture date.
     body.append('mtime', String(files[0].lastModified));
-    if (categoryId) body.append('categoryId', categoryId);
     const uploadId = crypto.randomUUID();
     const bytes = files.reduce((total, file) => total + file.size, 0);
     console.info('[upload] sending chunk', { uploadId, files: files.length, bytes });

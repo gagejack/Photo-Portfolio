@@ -56,6 +56,18 @@ export function setPhotoCategories(db, photoId, categoryIds) {
   tx();
 }
 
+export function addPhotoCategories(db, photoIds, categoryIds) {
+  const tx = db.transaction(() => {
+    const insert = db.prepare(
+      'INSERT OR IGNORE INTO photo_categories (photo_id, category_id) VALUES (?,?)'
+    );
+    for (const photoId of photoIds) {
+      for (const categoryId of categoryIds) insert.run(photoId, categoryId);
+    }
+  });
+  tx();
+}
+
 export function updatePhoto(db, id, { caption, takenAt }) {
   if (caption !== undefined) {
     db.prepare('UPDATE photos SET caption = ? WHERE id = ?').run(caption, id);

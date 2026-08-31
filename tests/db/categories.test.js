@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openDb } from '../../src/db/index.js';
 import {
-  createCategory, listTree, descendantIds, deleteCategory, reparentCategory, renameCategory,
+  createCategory, listTree, descendantIds, ancestorIds, deleteCategory, reparentCategory, renameCategory,
   CategoryChildrenLimitError,
 } from '../../src/db/categories.js';
 
@@ -26,6 +26,12 @@ test('descendantIds includes self and every level below', () => {
 test('descendantIds on a leaf returns just itself', () => {
   const { db, kyoto } = fixture();
   assert.deepEqual(descendantIds(db, kyoto), [kyoto]);
+  db.close();
+});
+
+test('ancestorIds includes the category and each parent up to the root', () => {
+  const { db, urban, japan, kyoto } = fixture();
+  assert.deepEqual(ancestorIds(db, kyoto), [kyoto, japan, urban]);
   db.close();
 });
 

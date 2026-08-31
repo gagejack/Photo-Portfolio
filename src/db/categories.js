@@ -48,6 +48,20 @@ export function descendantIds(db, categoryId) {
   return rows.map(r => r.id);
 }
 
+// Walk upward from a category so assigning a subcategory can also assign its
+// containing categories. The selected category is included as the first row.
+export function ancestorIds(db, categoryId) {
+  const rows = db.prepare(`
+    WITH RECURSIVE ancestors(id, parent_id) AS (
+      SELECT id, parent_id FROM categories WHERE id = ?
+      UNION ALL
+      SELECT c.id, c.parent_id FROM categories c JOIN ancestors a ON c.id = a.parent_id
+    )
+    SELECT id FROM ancestors
+  `).all(categoryId);
+  return rows.map(row => row.id);
+}
+
 export function listTree(db) {
   const rows = db.prepare(`
     SELECT c.id, c.name, c.slug, c.parent_id AS parentId, c.flag, c.position,
