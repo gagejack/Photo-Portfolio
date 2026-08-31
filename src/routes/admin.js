@@ -1,7 +1,11 @@
 import express from 'express';
 import multer from 'multer';
+import { mkdirSync } from 'node:fs';
+import { readFile, unlink } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { requireAuth } from './auth.js';
-import { processUpload, removePhotoFiles } from '../images/pipeline.js';
+import { processUpload, removePhotoFiles, stagingDir } from '../images/pipeline.js';
+import { createQueue } from '../images/queue.js';
 import {
   insertPhoto, listPhotos, getPhoto, deletePhoto, setPhotoCategories, updatePhoto
 } from '../db/photos.js';
@@ -34,6 +38,11 @@ function flatten(tree, out = []) {
   return out;
 }
 
+function uploadDebugId(req) {
+  const supplied = req.get('x-upload-debug-id');
+  return supplied && /^[a-zA-Z0-9-]{1,80}$/.test(supplied) ? supplied : randomUUID();
+}
+
 function renderAdmin({ db, activeId }) {
   const tree = listTree(db);
   const flat = flatten(tree);
@@ -62,7 +71,7 @@ function renderAdmin({ db, activeId }) {
     scripts: ['/js/upload.js'],
     body: `
 <div class="admin-top">
-  <div class="brand">Gage Jack <span class="dim">/ admin</span></div>
+  <a class="brand" href="/">Gage Jack <span class="dim">/ admin</span></a>
   <form method="post" action="/admin/logout"><button type="submit">Log out</button></form>
 </div>
 <div class="admin-cols">
@@ -96,43 +105,112 @@ function renderAdmin({ db, activeId }) {
 
 export function adminRouter({ db, config }) {
   const router = express.Router();
+
+  const staging = stagingDir(config.photosRoot);
+  mkdirSync(staging, { recursive: true });
+
+  // Bytes go straight to disk. Holding a 50-photo batch in memory is over a
+  // gigabyte and risks an OOM kill on a small VPS.
   const upload = multer({
-    storage: multer.memoryStorage(),
+    storage: multer.diskStorage({
+      destination: (req, file, cb) => cb(null, staging),
+      filename: (req, file, cb) => cb(null, randomUUID()),
+    }),
     limits: { fileSize: config.maxUploadBytes },
+  });
+
+  // A browser-side "Failed to fetch" has no HTTP status. Correlating its
+  // request ID with the service journal tells us whether the request reached
+  // this app or was dropped by the network/tunnel before it got here.
+  function logUploadLifecycle(req, res, next) {
+    req.uploadDebugId = uploadDebugId(req);
+    const startedAt = Date.now();
+
+    req.once('aborted', () => {
+      console.warn('[upload] request aborted', {
+        id: req.uploadDebugId,
+        contentLength: req.get('content-length') ?? null,
+        elapsedMs: Date.now() - startedAt,
+      });
+    });
+
+    res.once('finish', () => {
+      console.info('[upload] request finished', {
+        id: req.uploadDebugId,
+        status: res.statusCode,
+        files: req.files?.length ?? 0,
+        fileBytes: req.files?.reduce((total, file) => total + file.size, 0) ?? 0,
+        elapsedMs: Date.now() - startedAt,
+      });
+    });
+
+    next();
+  }
+
+  function handleUploadError(err, req, res, next) {
+    console.error('[upload] request failed', {
+      id: req.uploadDebugId,
+      code: err.code ?? null,
+      contentLength: req.get('content-length') ?? null,
+    }, err);
+
+    if (res.headersSent) return next(err);
+
+    const tooLarge = err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE';
+    return res.status(tooLarge ? 413 : 500).json({
+      error: tooLarge
+        ? 'One or more files exceed the per-photo upload limit'
+        : 'Upload failed',
+      uploadId: req.uploadDebugId,
+    });
+  }
+
+  // The queue is generic; this callback is where photo and database knowledge
+  // lives. One job = one staged file.
+  const queue = createQueue({
+    async processJob({ path, name, categoryId }) {
+      try {
+        const buffer = await readFile(path);
+        const meta = await processUpload({
+          buffer,
+          mtime: new Date(),
+          photosRoot: config.photosRoot,
+        });
+        try {
+          const id = insertPhoto(db, meta);
+          if (categoryId) setPhotoCategories(db, id, [Number(categoryId)]);
+        } catch (dbErr) {
+          // Keep disk and database consistent: no orphaned files.
+          removePhotoFiles(config.photosRoot, meta.filename);
+          throw dbErr;
+        }
+      } finally {
+        // The staged copy is temporary on every path, success or failure.
+        await unlink(path).catch(() => {});
+      }
+    },
   });
 
   router.get('/admin', requireAuth, (req, res) => {
     res.send(renderAdmin({ db, activeId: req.query.c }));
   });
 
-  router.post('/admin/upload', requireAuth, upload.array('photos', 100), async (req, res) => {
-    const uploaded = [];
-    const failed = [];
+  router.post('/admin/upload', requireAuth, logUploadLifecycle, upload.array('photos', 100), (req, res) => {
+    const { batchId, total } = queue.addBatch(
+      (req.files ?? []).map(file => ({
+        path: file.path,
+        name: file.originalname,
+        categoryId: req.body.categoryId,
+      }))
+    );
+    // 202: accepted, not yet processed. Progress is at the status endpoint.
+    res.status(202).json({ batchId, total });
+  }, handleUploadError);
 
-    for (const file of req.files ?? []) {
-      try {
-        const meta = await processUpload({
-          buffer: file.buffer,
-          mtime: new Date(),
-          photosRoot: config.photosRoot,
-        });
-        try {
-          const id = insertPhoto(db, meta);
-          if (req.body.categoryId) {
-            setPhotoCategories(db, id, [Number(req.body.categoryId)]);
-          }
-          uploaded.push({ id, filename: meta.filename });
-        } catch (dbErr) {
-          // Keep disk and database consistent: no orphaned files.
-          removePhotoFiles(config.photosRoot, meta.filename);
-          throw dbErr;
-        }
-      } catch (err) {
-        failed.push({ name: file.originalname, reason: err.message });
-      }
-    }
-
-    res.json({ uploaded, failed });
+  router.get('/admin/upload/status/:batchId', requireAuth, (req, res) => {
+    const batch = queue.getBatch(req.params.batchId);
+    if (!batch) return res.status(404).json({ error: 'unknown batch' });
+    res.json(batch);
   });
 
   router.post('/admin/photos/:id', requireAuth, (req, res) => {

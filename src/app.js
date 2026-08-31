@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { publicRouter } from './routes/public.js';
 import { authRouter } from './routes/auth.js';
 import { adminRouter } from './routes/admin.js';
+import { sweepStaging } from './images/pipeline.js';
 
 export function createApp({ db, config }) {
   const app = express();
@@ -23,6 +24,11 @@ export function createApp({ db, config }) {
   }));
 
   app.use(express.static('public'));
+
+  // Anything left in staging belongs to a queue that died with the last
+  // process. Clear it before serving.
+  const swept = sweepStaging(config.photosRoot);
+  if (swept > 0) console.log(`swept ${swept} orphaned staging file(s)`);
 
   // Only derivatives are exposed. `originals/` is deliberately not served.
   app.use('/photos/thumb', express.static(join(config.photosRoot, 'thumb')));

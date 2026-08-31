@@ -39,7 +39,21 @@ function flatten(tree, out = []) {
   return out;
 }
 
-function renderFeed({ photos, tree, activeSlug }) {
+function renderNav({ active, isAdmin }) {
+  return `<nav class="pnav">
+  <div class="nav-left">
+    <a class="brand" href="/">Gage Jack</a>
+    ${isAdmin ? '<a class="admin-link" href="/admin">Admin</a>' : ''}
+  </div>
+  <div class="links">
+    <a class="${active === 'portfolio' ? 'cur' : ''}" href="/">Portfolio</a>
+    <a class="${active === 'projects' ? 'cur' : ''}" href="/other-projects">Other Projects</a>
+    ${isAdmin ? '<form class="logout" method="post" action="/admin/logout"><input type="hidden" name="returnTo" value="/"><button type="submit">Log out</button></form>' : ''}
+  </div>
+</nav>`;
+}
+
+function renderFeed({ photos, tree, activeSlug, isAdmin }) {
   const rows = justify(photos, {
     containerWidth: CONTAINER_WIDTH,
     targetHeight: TARGET_HEIGHT,
@@ -56,14 +70,19 @@ function renderFeed({ photos, tree, activeSlug }) {
 
   const grid = rows.map(row => `
     <div class="row" style="height:${row.height}px">
-      ${row.items.map(it => `
+      ${row.items.map(it => {
+        const base = escapeHtml(it.photo.filename.replace(/\.[^.]+$/, ''));
+        return `
         <div class="cell" style="width:${it.width}px">
-          <img src="/photos/thumb/${escapeHtml(it.photo.filename.replace(/\.[^.]+$/, ''))}.webp"
+          <img src="/photos/thumb/${base}.webp"
+               srcset="/photos/thumb/${base}.webp 800w, /photos/display/${base}.webp 2560w"
+               sizes="${Math.ceil(it.width)}px"
                width="${it.width}" height="${row.height}"
                loading="lazy" alt="${escapeHtml(it.photo.caption ?? '')}"
                data-id="${it.photo.id}"
-               data-full="/photos/display/${escapeHtml(it.photo.filename.replace(/\.[^.]+$/, ''))}.webp">
-        </div>`).join('')}
+               data-full="/photos/display/${base}.webp">
+        </div>`;
+      }).join('')}
     </div>`).join('');
 
   const railHtml = rail.map(y => `
@@ -76,10 +95,7 @@ function renderFeed({ photos, tree, activeSlug }) {
     styles: ['/css/site.css'],
     scripts: ['/js/rail.js', '/js/lightbox.js'],
     body: `
-<nav class="pnav">
-  <div class="brand">Gage Jack</div>
-  <div class="links"><a class="cur" href="/">Portfolio</a><a href="/other-projects">Other Projects</a></div>
-</nav>
+${renderNav({ active: 'portfolio', isAdmin })}
 <div class="filters">${filters}</div>
 <div class="stage">
   <div class="feed">${grid || '<p class="empty">No photos yet.</p>'}</div>
@@ -99,7 +115,7 @@ export function publicRouter(db) {
 
   router.get('/', (req, res) => {
     const photos = listPhotos(db, {});
-    res.send(renderFeed({ photos, tree: listTree(db), activeSlug: null }));
+    res.send(renderFeed({ photos, tree: listTree(db), activeSlug: null, isAdmin: Boolean(req.session?.user) }));
   });
 
   router.get('/c/:slug', (req, res) => {
@@ -107,17 +123,20 @@ export function publicRouter(db) {
     const match = flatten(tree).find(c => c.slug === req.params.slug);
     if (!match) return res.status(404).send('Not found');
     const photos = listPhotos(db, { categoryId: match.id });
-    res.send(renderFeed({ photos, tree, activeSlug: match.slug }));
+    res.send(renderFeed({
+      photos,
+      tree,
+      activeSlug: match.slug,
+      isAdmin: Boolean(req.session?.user),
+    }));
   });
 
   router.get('/other-projects', (req, res) => {
     res.send(layoutPage({
       title: 'Other Projects',
       styles: ['/css/site.css'],
-      body: `<nav class="pnav">
-        <div class="brand">Gage Jack</div>
-        <div class="links"><a href="/">Portfolio</a><a class="cur" href="/other-projects">Other Projects</a></div>
-      </nav><div class="stage"><p class="empty">Coming soon.</p></div>`,
+      body: `${renderNav({ active: 'projects', isAdmin: Boolean(req.session?.user) })}
+      <div class="stage"><p class="empty">Coming soon.</p></div>`,
     }));
   });
 

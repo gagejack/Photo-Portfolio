@@ -9,7 +9,8 @@
   "scripts": {
     "start": "node src/server.js",
     "test": "node --test",
-    "hash": "node scripts/hash-password.js"
+    "hash": "node scripts/hash-password.js",
+    "rebuild-thumbnails": "node scripts/rebuild-thumbnails.js"
   },
   "repository": {
     "type": "git",
