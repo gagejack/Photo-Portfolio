@@ -7,8 +7,10 @@
     "doc": "docs"
   },
   "scripts": {
+    "build": "vite build",
+    "dev": "vite",
     "start": "node src/server.js",
-    "test": "node --test",
+    "test": "npm run build && node --test",
     "hash": "node scripts/hash-password.js",
     "rebuild-thumbnails": "node scripts/rebuild-thumbnails.js"
   },
@@ -34,6 +36,12 @@
     "express": "^5.2.1",
     "express-session": "^1.19.0",
     "multer": "^2.3.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "sharp": "^0.35.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "vite": "^6.4.3"
   }
 }

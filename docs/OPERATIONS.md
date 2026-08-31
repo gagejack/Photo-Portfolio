@@ -64,7 +64,9 @@ journalctl -u photoportfolio --since "1 hour ago" --no-pager
 ```bash
 cd /opt/photoportfolio
 git pull
-npm ci --omit=dev
+npm ci
+npm run build
+npm prune --omit=dev
 sudo systemctl restart photoportfolio
 journalctl -u photoportfolio -n 20 --no-pager   # confirm it came back
 ```

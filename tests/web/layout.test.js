@@ -1,7 +1,7 @@
 // tests/web/layout.test.js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { justify } from '../../src/web/layout.js';
+import { justify } from '../../frontend/src/layout.js';
 
 const photo = (id, width, height) => ({ id, width, height });
 

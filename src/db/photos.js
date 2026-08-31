@@ -39,6 +39,12 @@ export function listPhotos(db, { categoryId = null } = {}) {
   `).all(...ids);
 }
 
+export function photoCategoryIds(db, photoId) {
+  return db.prepare(
+    'SELECT category_id AS categoryId FROM photo_categories WHERE photo_id = ? ORDER BY category_id'
+  ).all(photoId).map(row => row.categoryId);
+}
+
 export function setPhotoCategories(db, photoId, categoryIds) {
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM photo_categories WHERE photo_id = ?').run(photoId);

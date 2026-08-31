@@ -26,11 +26,10 @@ async function harness() {
   await new Promise(r => server.once('listening', r));
   const base = `http://127.0.0.1:${server.address().port}`;
 
-  const res = await fetch(`${base}/admin/login`, {
+  const res = await fetch(`${base}/api/login`, {
     method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: 'username=gage&password=pw',
-    redirect: 'manual',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'gage', password: 'pw' }),
   });
   const cookie = res.headers.get('set-cookie').split(';')[0];
   return { db, base, cookie, server, photosRoot };
@@ -66,10 +65,10 @@ async function uploadAndWait(base, cookie, blobs) {
   return waitForBatch(base, cookie, batchId);
 }
 
-test('the admin panel requires authentication', async () => {
+test('the admin data API requires authentication', async () => {
   const { base, server, photosRoot, db } = await harness();
-  const res = await fetch(`${base}/admin`, { redirect: 'manual' });
-  assert.equal(res.status, 302);
+  const res = await fetch(`${base}/api/admin`);
+  assert.equal(res.status, 401);
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });
 
@@ -123,7 +122,7 @@ test('deleting a photo removes its row and all three files', async () => {
   await uploadAndWait(base, cookie, [[await jpegBlob(), 'shot.jpg']]);
 
   const [photo] = listPhotos(db, {});
-  await fetch(`${base}/admin/photos/${photo.id}/delete`, { method: 'POST', headers: { cookie } });
+  await fetch(`${base}/api/admin/photos/${photo.id}`, { method: 'DELETE', headers: { cookie } });
 
   assert.equal(listPhotos(db, {}).length, 0);
   const p = photoPaths(photosRoot, photo.filename);
@@ -132,36 +131,35 @@ test('deleting a photo removes its row and all three files', async () => {
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });
 
-test('creating a category makes it visible on the public site', async () => {
+test('creating a category makes it visible in the public feed API', async () => {
   const { db, base, cookie, server, photosRoot } = await harness();
-  await fetch(`${base}/admin/categories`, {
+  await fetch(`${base}/api/admin/categories`, {
     method: 'POST',
-    headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
-    body: 'name=Urban&flag=',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Urban', flag: null }),
   });
-  const html = await (await fetch(`${base}/`)).text();
-  assert.match(html, /Urban/);
+  const feed = await (await fetch(`${base}/api/feed`)).json();
+  assert.equal(feed.categories[0].name, 'Urban');
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });
 
-test('a caption submitted through the edit form persists and reappears escaped', async () => {
+test('photo metadata updates persist and are returned as JSON data', async () => {
   const { db, base, cookie, server, photosRoot } = await harness();
   await uploadAndWait(base, cookie, [[await jpegBlob(), 'shot.jpg']]);
 
   const [photo] = listPhotos(db, {});
   const caption = `Kyoto <b>at</b> night's edge`;
 
-  await fetch(`${base}/admin/photos/${photo.id}`, {
-    method: 'POST',
-    headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
-    body: `caption=${encodeURIComponent(caption)}`,
+  await fetch(`${base}/api/admin/photos/${photo.id}`, {
+    method: 'PATCH',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ caption }),
   });
 
   assert.equal(getPhoto(db, photo.id).caption, caption);
 
-  const html = await (await fetch(`${base}/admin`, { headers: { cookie } })).text();
-  assert.doesNotMatch(html, /Kyoto <b>at<\/b> night/);
-  assert.match(html, /Kyoto &lt;b&gt;at&lt;\/b&gt; night&#39;s edge/);
+  const admin = await (await fetch(`${base}/api/admin`, { headers: { cookie } })).json();
+  assert.equal(admin.photos[0].caption, caption);
 
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });
@@ -221,7 +219,7 @@ test('the status endpoint requires authentication', async () => {
   const { batchId } = await res.json();
 
   const anon = await fetch(`${base}/admin/upload/status/${batchId}`, { redirect: 'manual' });
-  assert.equal(anon.status, 302);
+  assert.equal(anon.status, 401);
 
   await waitForBatch(base, cookie, batchId);
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
@@ -236,10 +234,10 @@ test('an unknown batch id returns 404', async () => {
 
 test('a photo uploaded into a category lands in that category', async () => {
   const { db, base, cookie, server, photosRoot } = await harness();
-  await fetch(`${base}/admin/categories`, {
+  await fetch(`${base}/api/admin/categories`, {
     method: 'POST',
-    headers: { cookie, 'content-type': 'application/x-www-form-urlencoded' },
-    body: 'name=Kyoto&flag=jp',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Kyoto', flag: 'jp' }),
   });
   const [category] = listTree(db);
 
@@ -251,5 +249,7 @@ test('a photo uploaded into a category lands in that category', async () => {
   await waitForBatch(base, cookie, batchId);
 
   assert.equal(listPhotos(db, { categoryId: category.id }).length, 1);
+  const admin = await (await fetch(`${base}/api/admin`, { headers: { cookie } })).json();
+  assert.deepEqual(admin.photos[0].categoryIds, [category.id]);
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });
