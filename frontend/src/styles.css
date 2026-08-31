@@ -28,8 +28,8 @@ button:disabled { cursor: default; opacity: .35; }
 .stage { display: flex; padding: 18px 32px 80px; }
 .feed { flex: 1; min-width: 0; max-width: 1600px; margin: 0 auto; }
 .photo-row { display: flex; gap: 10px; margin-bottom: 10px; }
-.cell { overflow: hidden; border: 0; margin: 0; padding: 0; background: none; text-align: left; cursor: pointer; }
-.photo-row img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 2px; }
+.cell { flex: none; overflow: hidden; border: 0; margin: 0; padding: 0; background: none; text-align: left; cursor: pointer; }
+.photo-row img { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: 2px; }
 .empty, .dim { color: #999; padding: 40px 0; }
 .error-state { color: #a33; padding: 40px 0; }
 .message-page { max-width: 720px; margin: 15vh auto; padding: 24px; }

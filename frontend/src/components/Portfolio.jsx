@@ -1,13 +1,24 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { justify, photoBase } from '../layout.js';
 import DateRail from './DateRail.jsx';
 import Lightbox from './Lightbox.jsx';
 import Nav from './Nav.jsx';
 
-const LAYOUT = { containerWidth: 1600, targetHeight: 320, gutter: 10 };
+const MAX_WIDTH = 1600;
+const GUTTER = 10;
+
+// Row height shrinks on narrow screens so phones get 1-2 photos per row
+// instead of a row of slivers packed to a desktop-width container.
+function targetHeight(width) {
+  if (width < 500) return Math.round(width * 0.72);
+  if (width < 900) return Math.round(width * 0.42);
+  return 320;
+}
 
 export default function Portfolio({ slug, authenticated }) {
+  const feedRef = useRef(null);
+  const [containerWidth, setContainerWidth] = useState(0);
   const [feed, setFeed] = useState(null);
   const [error, setError] = useState(null);
   const [lightbox, setLightbox] = useState(-1);
@@ -19,9 +30,25 @@ export default function Portfolio({ slug, authenticated }) {
     api(`/api/feed${query}`).then(setFeed).catch(setError);
   }, [slug]);
 
+  useEffect(() => {
+    const node = feedRef.current;
+    if (!node) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setContainerWidth(entry.contentRect.width);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [feed]);
+
   const rows = useMemo(
-    () => justify(feed?.photos ?? [], LAYOUT),
-    [feed],
+    () => (containerWidth
+      ? justify(feed?.photos ?? [], {
+        containerWidth: Math.min(containerWidth, MAX_WIDTH),
+        targetHeight: targetHeight(containerWidth),
+        gutter: GUTTER,
+      })
+      : []),
+    [feed, containerWidth],
   );
   const closeLightbox = useCallback(() => setLightbox(-1), []);
   const changeLightbox = useCallback(index => setLightbox(index), []);
@@ -44,7 +71,7 @@ export default function Portfolio({ slug, authenticated }) {
           <main className="feed"><p className="empty">Loading photos…</p></main>
         ) : (
           <>
-            <main className="feed">
+            <main className="feed" ref={feedRef}>
               {rows.length ? rows.map((row, rowIndex) => (
                 <div className="photo-row" style={{ height: row.height }} key={`${rowIndex}-${row.items[0].photo.id}`}>
                   {row.items.map(item => {
@@ -55,7 +82,7 @@ export default function Portfolio({ slug, authenticated }) {
                         <img
                           src={`/photos/thumb/${base}.webp`}
                           srcSet={`/photos/thumb/${base}.webp 800w, /photos/display/${base}.webp 2560w`}
-                          sizes={`${Math.ceil(item.width)}px`}
+                          sizes={`${Math.min(Math.ceil(item.width), 800)}px`}
                           width={item.width}
                           height={row.height}
                           loading="lazy"
