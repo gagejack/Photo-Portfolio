@@ -282,7 +282,10 @@ export default function Admin({ authenticated }) {
             <>
               <div className="category-header">
                 <span>Categories</span>
-                <button className="add-main-category" type="button" title="Add main category" aria-label="Add main category" onClick={addMainCategory}>+</button>
+                <div className="category-header-actions">
+                  <a className={`show-all ${activeId ? '' : 'on'}`} href="/admin" title="Show all photos">All</a>
+                  <button className="add-main-category" type="button" title="Add main category" aria-label="Add main category" onClick={addMainCategory}>+</button>
+                </div>
               </div>
               <CategoryTree
                 nodes={data.categories}

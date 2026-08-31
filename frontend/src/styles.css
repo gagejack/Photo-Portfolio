@@ -51,6 +51,10 @@ button:disabled { cursor: default; opacity: .35; }
 .admin-cols { display: flex; min-height: calc(100vh - 62px); }
 .side { width: 260px; flex: none; padding: 20px 16px 22px; border-right: 1px solid var(--line); }
 .category-header { display: flex; align-items: center; justify-content: space-between; margin: 0 0 9px 4px; color: #777; font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
+.category-header-actions { display: flex; align-items: center; gap: 6px; }
+.show-all { display: grid; place-items: center; height: 25px; padding: 0 8px; border: 1px solid #ddd; border-radius: 4px; color: #666; font-size: 11px; font-weight: 600; letter-spacing: .06em; }
+.show-all:hover { color: #111; border-color: #aaa; background: #fafafa; }
+.show-all.on { border-color: #333; background: #333; color: #fff; }
 .add-main-category, .category-menu-button { display: grid; place-items: center; border: 0; background: none; color: #666; cursor: pointer; }
 .add-main-category { width: 25px; height: 25px; border: 1px solid #ddd; border-radius: 4px; font-size: 19px; line-height: 1; }
 .add-main-category:hover, .category-menu-button:hover { color: #111; border-color: #aaa; background: #fafafa; }
