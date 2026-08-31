@@ -29,16 +29,36 @@
     return res.json();
   }
 
+  function showBar(total) {
+    progress.textContent = '';
+    const row = document.createElement('div');
+    row.className = 'up-row';
+    row.innerHTML =
+      '<span class="up-label">Uploading photos</span>' +
+      '<span class="up-track"><span class="up-fill"></span></span>' +
+      `<span class="up-count">0 / ${total}</span>`;
+    progress.appendChild(row);
+    return {
+      row,
+      label: row.querySelector('.up-label'),
+      fill: row.querySelector('.up-fill'),
+      count: row.querySelector('.up-count'),
+      update(done) {
+        this.fill.style.width = `${Math.round((done / total) * 100)}%`;
+        this.count.textContent = `${done} / ${total}`;
+      },
+    };
+  }
+
   async function send(files) {
     if (!files.length) return;
 
     const batches = chunk(files, CHUNK_SIZE);
     let done = 0;
     const allFailed = [];
+    const bar = showBar(files.length);
 
     for (const batch of batches) {
-      progress.textContent =
-        `Uploading ${done + 1}–${done + batch.length} of ${files.length}…`;
       try {
         const result = await sendChunk(batch);
         allFailed.push(...result.failed);
@@ -46,6 +66,7 @@
         for (const f of batch) allFailed.push({ name: f.name, reason: err.message });
       }
       done += batch.length;
+      bar.update(done);
     }
 
     if (allFailed.length) {
@@ -55,8 +76,9 @@
         allFailed.map(f => `${f.name} (${f.reason})`).join(', ');
       setTimeout(() => location.reload(), 5000);
     } else {
-      progress.textContent = `All ${files.length} uploaded.`;
-      location.reload();
+      bar.label.textContent = 'Upload complete';
+      bar.row.classList.add('done-fade');
+      setTimeout(() => location.reload(), 500);
     }
   }
 
