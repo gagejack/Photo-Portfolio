@@ -61,9 +61,7 @@ function renderFeed({ photos, tree, activeSlug }) {
           <img src="/photos/thumb/${escapeHtml(it.photo.filename.replace(/\.[^.]+$/, ''))}.webp"
                width="${it.width}" height="${row.height}"
                loading="lazy" alt="${escapeHtml(it.photo.caption ?? '')}"
-               title="${escapeHtml(it.photo.filename)}"
                data-id="${it.photo.id}"
-               data-filename="${escapeHtml(it.photo.filename)}"
                data-full="/photos/display/${escapeHtml(it.photo.filename.replace(/\.[^.]+$/, ''))}.webp">
         </div>`).join('')}
     </div>`).join('');

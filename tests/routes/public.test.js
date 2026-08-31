@@ -43,8 +43,8 @@ test('the feed renders the nav and every photo', async () => {
   assert.match(html, /Gage Jack/);
   assert.match(html, /Portfolio/);
   assert.match(html, /Other Projects/);
-  assert.match(html, /a\.jpg/);
-  assert.match(html, /c\.jpg/);
+  assert.match(html, /\/photos\/thumb\/a\.webp/);
+  assert.match(html, /\/photos\/thumb\/c\.webp/);
   server.close();
   db.close();
 });
@@ -53,7 +53,7 @@ test('photos appear newest first in the markup', async () => {
   const { db } = seeded();
   const { server, base } = await listen(createApp({ db, config }));
   const html = await (await fetch(`${base}/`)).text();
-  assert.ok(html.indexOf('a.jpg') < html.indexOf('c.jpg'));
+  assert.ok(html.indexOf('a.webp') < html.indexOf('c.webp'));
   server.close();
   db.close();
 });
@@ -62,9 +62,9 @@ test('a category page includes descendants and excludes others', async () => {
   const { db } = seeded();
   const { server, base } = await listen(createApp({ db, config }));
   const html = await (await fetch(`${base}/c/urban`)).text();
-  assert.match(html, /a\.jpg/);   // tagged Kyoto, a descendant of Urban
-  assert.match(html, /c\.jpg/);   // tagged Urban directly
-  assert.doesNotMatch(html, /b\.jpg/); // Cars
+  assert.match(html, /\/photos\/thumb\/a\.webp/);   // tagged Kyoto, a descendant of Urban
+  assert.match(html, /\/photos\/thumb\/c\.webp/);   // tagged Urban directly
+  assert.doesNotMatch(html, /\/photos\/thumb\/b\.webp/); // Cars
   server.close();
   db.close();
 });
