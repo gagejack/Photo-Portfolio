@@ -16,6 +16,21 @@ test('every row fills the container width exactly', () => {
       row.items.reduce((s, it) => s + it.width, 0) + (row.items.length - 1) * 10;
     assert.ok(Math.abs(total - 1600) < 1, `row width ${total} should be 1600`);
   }
+
+  // Test with varied aspect ratios and gutter that would drift without fix
+  const variedPhotos = [
+    photo(1, 5000, 3000), photo(2, 3500, 2800), photo(3, 4200, 2500),
+    photo(4, 3800, 3100), photo(5, 4500, 2900), photo(6, 3300, 2700),
+    photo(7, 4100, 2600), photo(8, 3900, 3200),
+  ];
+  const driftRows = justify(variedPhotos, { containerWidth: 1600, targetHeight: 320, gutter: 6 });
+
+  // Interior rows must sum to exactly containerWidth
+  for (const row of driftRows.slice(0, -1)) {
+    const total =
+      row.items.reduce((s, it) => s + it.width, 0) + (row.items.length - 1) * 6;
+    assert.equal(total, 1600, `row width ${total} must equal exactly 1600`);
+  }
 });
 
 test('aspect ratios are preserved within a row', () => {
