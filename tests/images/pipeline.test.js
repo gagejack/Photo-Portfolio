@@ -171,3 +171,16 @@ test('sweepStaging on a missing directory is a no-op', () => {
   assert.equal(sweepStaging(root), 0);
   rmSync(root, { recursive: true, force: true });
 });
+
+test('sweepStaging removes a directory left inside staging', () => {
+  const root = tmpRoot();
+  const dir = stagingDir(root);
+  mkdirSync(join(dir, 'leftover-dir'), { recursive: true });
+  writeFileSync(join(dir, 'plain-file'), 'bytes');
+
+  assert.equal(sweepStaging(root), 2);
+  assert.equal(existsSync(join(dir, 'leftover-dir')), false);
+  assert.equal(existsSync(join(dir, 'plain-file')), false);
+  assert.ok(existsSync(dir), 'the staging directory itself survives');
+  rmSync(root, { recursive: true, force: true });
+});

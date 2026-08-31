@@ -56,7 +56,7 @@ export function sweepStaging(photosRoot) {
   const dir = stagingDir(photosRoot);
   if (!existsSync(dir)) return 0;
   const names = readdirSync(dir);
-  for (const name of names) rmSync(join(dir, name), { force: true });
+  for (const name of names) rmSync(join(dir, name), { recursive: true, force: true });
   return names.length;
 }
 
