@@ -71,6 +71,32 @@ test('a corrupt buffer throws and leaves no files behind', async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
+test('a derivative failure mid-pipeline cleans up every file already written', async () => {
+  const root = tmpRoot();
+  const full = await jpeg(800, 600);
+  // Truncate one byte off a real, well-formed JPEG. The truncated buffer
+  // still has a valid header, so it passes `assertIsImage` and the initial
+  // `sharp(buffer).metadata()` validation call — but decoding pixels (which
+  // `.rotate().toBuffer()` must do to apply EXIF orientation and produce
+  // the derivatives) hits "premature end of JPEG image" and throws. This
+  // drives execution into the catch block in `processUpload`, proving the
+  // cleanup path actually removes a partially-written photo rather than
+  // just proving pre-write validation (which the "corrupt buffer" test
+  // above already covers).
+  const truncated = full.subarray(0, full.length - 1);
+
+  await assert.rejects(
+    () => processUpload({ buffer: truncated, mtime: new Date(), photosRoot: root })
+  );
+
+  const filename = `${hashName(truncated)}.jpg`;
+  const p = photoPaths(root, filename);
+  assert.ok(!existsSync(p.original), 'original must not survive a failed upload');
+  assert.ok(!existsSync(p.display), 'display must not survive a failed upload');
+  assert.ok(!existsSync(p.thumb), 'thumb must not survive a failed upload');
+  rmSync(root, { recursive: true, force: true });
+});
+
 test('removePhotoFiles deletes all three variants', async () => {
   const root = tmpRoot();
   const r = await processUpload({ buffer: await jpeg(), mtime: new Date(), photosRoot: root });
