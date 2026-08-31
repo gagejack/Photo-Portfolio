@@ -66,13 +66,16 @@
   async function awaitProcessing(batchIds, onProgress) {
     const failed = [];
     const pending = new Set(batchIds);
+    // Keep each batch's last observed count after it finishes. Otherwise,
+    // removing a finished batch from `pending` would make the combined bar
+    // move backwards while the remaining batches are still processing.
+    const progressByBatch = new Map(batchIds.map(batchId => [batchId, 0]));
     let lastProgress = 0;
     let lastChange = Date.now();
 
     while (pending.size > 0) {
       await new Promise(r => setTimeout(r, POLL_MS));
 
-      let done = 0;
       for (const batchId of [...pending]) {
         let status;
         try {
@@ -82,12 +85,14 @@
           // timeout below is what gives up.
           continue;
         }
-        done += status.done + status.failed.length;
+        progressByBatch.set(batchId, status.done + status.failed.length);
         if (status.finished) {
           failed.push(...status.failed);
           pending.delete(batchId);
         }
       }
+
+      const done = [...progressByBatch.values()].reduce((sum, count) => sum + count, 0);
 
       onProgress(done);
 
