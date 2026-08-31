@@ -82,7 +82,7 @@ export function createQueue({
     return {
       total: batch.total,
       done: batch.done,
-      failed: batch.failed,
+      failed: [...batch.failed],
       finished: batch.finished,
     };
   }

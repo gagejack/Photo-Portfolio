@@ -112,3 +112,17 @@ test('batches submitted concurrently do not mix their progress', async () => {
   assert.equal(queue.getBatch(first.batchId).total, 2);
   assert.equal(queue.getBatch(second.batchId).total, 1);
 });
+
+test('getBatch does not expose internal state for mutation', async () => {
+  const queue = createQueue({
+    processJob: async job => { if (job.name === 'bad') throw new Error('boom'); },
+  });
+  const { batchId } = queue.addBatch([{ name: 'bad' }]);
+  await settle(queue, batchId);
+
+  const view = queue.getBatch(batchId);
+  view.failed.push({ name: 'injected', reason: 'not real' });
+
+  assert.equal(queue.getBatch(batchId).failed.length, 1,
+    'mutating a returned view must not corrupt the queue');
+});
