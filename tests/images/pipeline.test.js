@@ -13,6 +13,12 @@ async function jpeg(w = 2400, h = 1600) {
   return sharp({ create: { width: w, height: h, channels: 3, background: '#4a7' } })
     .jpeg().toBuffer();
 }
+async function orientedJpeg(orientation, w = 800, h = 400) {
+  return sharp({ create: { width: w, height: h, channels: 3, background: '#4a7' } })
+    .withMetadata({ orientation })
+    .jpeg()
+    .toBuffer();
+}
 
 test('processUpload writes original, display, and thumb', async () => {
   const root = tmpRoot();
@@ -41,8 +47,34 @@ test('derivatives are resized and the original is untouched', async () => {
   const p = photoPaths(root, r.filename);
 
   assert.equal((await sharp(p.thumb).metadata()).width, 400);
-  assert.equal((await sharp(p.display).metadata()).width, 1600);
+  assert.equal((await sharp(p.display).metadata()).width, 2400); // under the 2560 cap, not upscaled
   assert.equal((await sharp(p.original).metadata()).width, 2400);
+  rmSync(root, { recursive: true, force: true });
+});
+
+test('records post-rotation dimensions for every EXIF orientation', async () => {
+  // Orientations 5-8 transpose the image; 1-4 do not. The recorded width and
+  // height must describe the image as a viewer sees it, after rotation.
+  for (const orientation of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    const root = tmpRoot();
+    const transposed = orientation >= 5;
+    const r = await processUpload({
+      buffer: await orientedJpeg(orientation, 800, 400),
+      mtime: new Date(),
+      photosRoot: root,
+    });
+    assert.equal(r.width, transposed ? 400 : 800, `width for orientation ${orientation}`);
+    assert.equal(r.height, transposed ? 800 : 400, `height for orientation ${orientation}`);
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('the display variant is capped at 2560px', async () => {
+  const root = tmpRoot();
+  const r = await processUpload({ buffer: await jpeg(6000, 4000), mtime: new Date(), photosRoot: root });
+  const p = photoPaths(root, r.filename);
+  assert.equal((await sharp(p.display).metadata()).width, 2560);
+  assert.equal((await sharp(p.thumb).metadata()).width, 400);
   rmSync(root, { recursive: true, force: true });
 });
 

@@ -1,12 +1,21 @@
 // src/images/pipeline.js
 import sharp from 'sharp';
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { extractDate } from './exif.js';
 
 const THUMB_WIDTH = 400;
-const DISPLAY_WIDTH = 1600;
+const DISPLAY_WIDTH = 2560;
+
+// sharp defaults to `effort: 4`. On a 2560px encode that costs roughly 600ms
+// per photo and buys about 2KB of file size versus `effort: 2` — measured, see
+// the design doc. Encoding, not decoding, dominates this pipeline.
+const WEBP_EFFORT = 2;
+
+// EXIF orientations 5-8 transpose the image; 1-4 leave the axes alone.
+const TRANSPOSING_ORIENTATIONS = new Set([5, 6, 7, 8]);
 
 // Magic-number sniffing. The spec requires content-based validation
 // because a file extension is attacker-controlled.
@@ -63,31 +72,31 @@ export async function processUpload({ buffer, mtime, photosRoot }) {
   let rotatedHeight;
 
   try {
-    // `rotate()` with no argument applies EXIF orientation.
-    const base = () => sharp(buffer).rotate();
+    // `.metadata()` on a `rotate()`-chained pipeline does NOT report swapped
+    // width/height — it only surfaces the orientation tag. Rather than paying
+    // for a full-size rotate pass just to measure the result (~380ms on a 21MB
+    // file, all of it discarded), read the tag off the unchained input and
+    // apply the swap ourselves.
+    const transposed = TRANSPOSING_ORIENTATIONS.has(meta.orientation);
+    rotatedWidth = transposed ? meta.height : meta.width;
+    rotatedHeight = transposed ? meta.width : meta.height;
 
-    // `.metadata()` on a `rotate()`-chained pipeline does NOT apply the
-    // orientation swap to the reported width/height — it only surfaces the
-    // orientation tag; the swap only takes effect once pixels are actually
-    // processed through the pipeline. So we run a dedicated rotate-only
-    // pass (no resize) and read the true post-rotation full-size
-    // dimensions off its `info` via `resolveWithObject`.
-    const { info: rotatedInfo } = await base().toBuffer({ resolveWithObject: true });
-    rotatedWidth = rotatedInfo.width;
-    rotatedHeight = rotatedInfo.height;
-
-    const display = await base()
+    // Decode once. The thumb is derived from the already-decoded display
+    // buffer rather than decoding the original a second time; at 2560 to 400
+    // the extra resampling step is not visible.
+    const display = await sharp(buffer)
+      .rotate()
       .resize({ width: DISPLAY_WIDTH, withoutEnlargement: true })
-      .webp({ quality: 82 })
+      .webp({ quality: 82, effort: WEBP_EFFORT })
       .toBuffer();
-    const thumb = await base()
+    const thumb = await sharp(display)
       .resize({ width: THUMB_WIDTH, withoutEnlargement: true })
-      .webp({ quality: 78 })
+      .webp({ quality: 78, effort: WEBP_EFFORT })
       .toBuffer();
 
-    writeFileSync(paths.original, buffer);
-    writeFileSync(paths.display, display);
-    writeFileSync(paths.thumb, thumb);
+    await writeFile(paths.original, buffer);
+    await writeFile(paths.display, display);
+    await writeFile(paths.thumb, thumb);
   } catch (err) {
     removePhotoFiles(photosRoot, filename);
     throw err;
