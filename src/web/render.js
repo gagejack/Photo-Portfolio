@@ -4,6 +4,10 @@ export function escapeHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, ch => ENTITIES[ch]);
 }
 
+// Generates a complete HTML5 document. Contract:
+// - `title` is automatically escaped by this function.
+// - `body` is NOT escaped — it must be pre-assembled trusted HTML. Callers are responsible for escaping user-supplied values (captions, category names) before interpolating them into body.
+// - `styles` and `scripts` entries are developer-supplied literals (not user input) and interpolated unescaped into href/src attributes.
 export function layoutPage({ title, body, styles = [], scripts = [] }) {
   return `<!doctype html>
 <html lang="en">
