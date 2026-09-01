@@ -248,3 +248,4 @@ button:disabled { cursor: default; opacity: .35; }
   .save-changes { flex: 1; }
   .storage-meter { width: min(230px, 48vw); }
 }
+.project-links { display: flex; flex-direction: column; gap: 8px; }

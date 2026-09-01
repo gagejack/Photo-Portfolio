@@ -49,7 +49,7 @@ export function createApp({ db, config }) {
     if (req.session?.user) return res.redirect('/admin');
     return sendReactApp(req, res);
   });
-  app.get(['/', '/c/:slug', '/other-projects'], sendReactApp);
+  app.get(['/', '/c/:slug', '/more'], sendReactApp);
 
   return app;
 }

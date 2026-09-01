@@ -10,9 +10,11 @@ function Projects({ authenticated }) {
     <>
       <Nav active="projects" authenticated={authenticated} />
       <div className="stage">
-        <p className="empty">
+        <div className="empty project-links">
           <a href="https://speedmon.xyz" target="_blank" rel="noreferrer">speedmon.xyz</a>
-        </p>
+          <a href="https://instagram.com/gageajack" target="_blank" rel="noreferrer">instagram.com/gageajack</a>
+          <a href="https://instagram.com/gagejacked" target="_blank" rel="noreferrer">instagram.com/gagejacked</a>
+        </div>
       </div>
     </>
   );
@@ -31,7 +33,7 @@ export default function App() {
   useEffect(() => {
     if (path === '/admin') document.title = 'Admin — Gage Jack Portfolio';
     else if (path === '/admin/login') document.title = 'Sign in — Gage Jack Portfolio';
-    else if (path === '/other-projects') document.title = 'Other Projects — Gage Jack';
+    else if (path === '/more') document.title = 'More — Gage Jack';
     else document.title = 'Gage Jack Portfolio';
   }, [path]);
 
@@ -41,7 +43,7 @@ export default function App() {
   if (path === '/admin') {
     return <Admin authenticated={authenticated} />;
   }
-  if (path === '/other-projects') {
+  if (path === '/more') {
     return <Projects authenticated={Boolean(authenticated)} />;
   }
 

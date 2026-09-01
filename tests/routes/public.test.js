@@ -42,7 +42,7 @@ async function listen(app) {
 test('public UI routes serve the React application shell', async () => {
   const { db } = seeded();
   const { server, base } = await listen(createApp({ db, config }));
-  for (const path of ['/', '/c/urban', '/other-projects', '/admin/login']) {
+  for (const path of ['/', '/c/urban', '/more', '/admin/login']) {
     const response = await fetch(`${base}${path}`);
     const html = await response.text();
     assert.equal(response.status, 200);

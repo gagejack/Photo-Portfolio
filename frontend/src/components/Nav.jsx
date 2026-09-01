@@ -17,7 +17,7 @@ export default function Nav({ active, authenticated }) {
       </div>
       <div className="links">
         <a className={active === 'portfolio' ? 'cur' : ''} href="/">Portfolio</a>
-        <a className={active === 'projects' ? 'cur' : ''} href="/other-projects">Other Projects</a>
+        <a className={active === 'projects' ? 'cur' : ''} href="/more">More</a>
         {authenticated && <button className="logout" type="button" onClick={logout}>Log out</button>}
       </div>
     </nav>
