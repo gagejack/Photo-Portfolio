@@ -28,7 +28,23 @@ button:disabled { cursor: default; opacity: .35; }
 .color-sort { display: grid; place-items: center; width: 20px; height: 20px; margin: -1px 0; padding: 2px; border: 1px solid transparent; border-radius: 5px; background: none; cursor: pointer; }
 .color-sort.on { border-color: rgba(0,0,0,.35); }
 .color-sort:focus-visible { outline: 2px solid #333; outline-offset: 2px; }
-.rgb-icon { display: block; width: 12px; height: 12px; border-radius: 3px; background: linear-gradient(90deg, #e65a5a 0 33.33%, #58a86b 33.33% 66.66%, #577fc1 66.66%); }
+.rgb-icon {
+  display: block; width: 13px; height: 13px; border-radius: 50%;
+  background:
+    conic-gradient(from 0deg,
+      #e6484f, #e08a34, #d9c531, #6fbf4a,
+      #37b9a2, #4a86d6, #7b5fd0, #cc4fb4, #e6484f);
+  -webkit-mask: radial-gradient(circle at 50% 50%, transparent 27%, #000 29%);
+  mask: radial-gradient(circle at 50% 50%, transparent 27%, #000 29%);
+  filter: saturate(.7) opacity(.85);
+  transition: filter .25s ease, transform .45s cubic-bezier(.4,0,.2,1);
+}
+.color-sort:hover .rgb-icon { filter: saturate(.85) opacity(1); }
+.color-sort.on .rgb-icon { filter: saturate(1.05) opacity(1); transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  .rgb-icon { transition: filter .25s ease; }
+  .color-sort.on .rgb-icon { transform: none; }
+}
 .stage { display: flex; padding: 18px 32px 80px; }
 .feed { flex: 1; min-width: 0; max-width: 1600px; margin: 0 auto; }
 .photo-row { display: flex; gap: 10px; margin-bottom: 10px; }
