@@ -1,0 +1,14 @@
+- generic [active] [ref=e1]:
+  - navigation [ref=e2]:
+    - generic [ref=e3]: Gage Jack
+    - generic [ref=e4]:
+      - link "Portfolio" [ref=e5] [cursor=pointer]:
+        - /url: /
+      - link "Other Projects" [ref=e6] [cursor=pointer]:
+        - /url: /other-projects
+  - generic [ref=e7]:
+    - link "All" [ref=e8] [cursor=pointer]:
+      - /url: /
+    - link "Favorites" [ref=e9] [cursor=pointer]:
+      - /url: /c/favorites
+  - paragraph [ref=e12]: No photos yet.
