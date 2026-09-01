@@ -108,6 +108,35 @@ button:disabled { cursor: default; opacity: .35; }
 .photo-select { position: absolute; z-index: 1; top: 5px; left: 5px; width: 20px; height: 20px; border: 1px solid rgba(255,255,255,.8); border-radius: 3px; background: rgba(0,0,0,.5); color: #fff; font-size: 14px; line-height: 1; cursor: pointer; }
 .photo-select.selected { border-color: #333; background: #fff; color: #333; }
 .thumb .x { position: absolute; top: 5px; right: 5px; width: 18px; height: 18px; border: 0; border-radius: 50%; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; line-height: 1; cursor: pointer; }
+.cat-picker {
+  max-height: 104px; overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid #e0e0e0; border-radius: 3px; background: #fff;
+}
+.cat-pick {
+  display: flex; align-items: center; gap: 4px; min-height: 22px; padding-right: 2px;
+  border-left: 2px solid transparent; color: #999; font-size: 11px; line-height: 1.25;
+}
+.cat-pick + .cat-pick { border-top: 1px solid #f4f4f4; }
+.cat-pick:hover { background: #fafafa; }
+/* Membership rail: solid edge reads the photo's filing down the whole box. */
+.cat-pick.in { border-left-color: #333; color: #333; }
+.cat-pick-name { flex: 1; min-width: 0; padding: 3px 0 3px 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-picker .lvl1 .cat-pick-name { padding-left: 14px; }
+.cat-picker .lvl2 .cat-pick-name { padding-left: 23px; }
+.cat-picker .lvl3 .cat-pick-name { padding-left: 32px; }
+.cat-pick-toggle {
+  flex: none; display: grid; place-items: center; width: 18px; height: 18px;
+  border: 1px solid #e0e0e0; border-radius: 3px; background: #fff;
+  color: #888; font-size: 13px; line-height: 1; cursor: pointer;
+}
+.cat-pick-toggle:hover { border-color: #aaa; color: #111; background: #fafafa; }
+.cat-pick.in .cat-pick-toggle { border-color: #d6d6d6; color: #555; }
+.cat-pick.in .cat-pick-toggle:hover { border-color: #a33; color: #a33; background: #fff5f5; }
+.cat-pick-empty { margin: 0; padding: 7px 8px; color: #aaa; font-size: 11px; }
+/* Sidebar .lvl* margins would blow out a 150px card; indent via padding instead. */
+.cat-picker .lvl1, .cat-picker .lvl2, .cat-picker .lvl3 { margin-left: 0; }
+.cat-pick-toggle:focus-visible, .show-all:focus-visible { outline: 2px solid #333; outline-offset: 1px; }
+
 .meta { display: flex; flex-direction: column; gap: 4px; margin-top: 5px; }
 .meta input, .meta select, .meta button { font-size: 11px; padding: 3px 5px; }
 .save-status { min-height: 16px; font-size: 11px; color: #777; }

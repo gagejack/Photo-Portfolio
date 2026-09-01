@@ -5,10 +5,10 @@ import Flag from './Flag.jsx';
 import Nav from './Nav.jsx';
 import Upload from './Upload.jsx';
 
-function flatten(nodes, output = []) {
+function flatten(nodes, output = [], depth = 0) {
   for (const node of nodes) {
-    output.push(node);
-    flatten(node.children, output);
+    output.push({ ...node, depth });
+    flatten(node.children, output, depth + 1);
   }
   return output;
 }
@@ -119,6 +119,12 @@ function PhotoCard({ photo, categories, onChanged, selecting, selected, onToggle
   const [status, setStatus] = useState('');
   const base = photoBase(photo.filename);
 
+  function toggleCategory(id) {
+    setCategoryIds(current => (current.includes(id)
+      ? current.filter(value => value !== id)
+      : [...current, id]));
+  }
+
   async function save(event) {
     event.preventDefault();
     setStatus('Saving…');
@@ -157,9 +163,27 @@ function PhotoCard({ photo, categories, onChanged, selecting, selected, onToggle
       <form className="meta" onSubmit={save}>
         <input aria-label="Date taken" type="date" value={takenAt} onChange={event => setTakenAt(event.target.value)} />
         <input aria-label="Caption" type="text" value={caption} onChange={event => setCaption(event.target.value)} placeholder="Caption" />
-        <select aria-label="Categories" multiple size="3" value={categoryIds} onChange={event => setCategoryIds([...event.target.selectedOptions].map(option => option.value))}>
-          {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
-        </select>
+        <div className="cat-picker" role="group" aria-label="Categories">
+          {categories.length ? categories.map(category => {
+            const id = String(category.id);
+            const member = categoryIds.includes(id);
+            return (
+              <div className={`cat-pick lvl${Math.min(category.depth, 3)} ${member ? 'in' : ''}`} key={category.id}>
+                <span className="cat-pick-name" title={category.name}>{category.name}</span>
+                <button
+                  className="cat-pick-toggle"
+                  type="button"
+                  aria-pressed={member}
+                  aria-label={`${member ? 'Remove from' : 'Add to'} ${category.name}`}
+                  title={member ? 'Remove from category' : 'Add to category'}
+                  onClick={() => toggleCategory(id)}
+                >
+                  {member ? '\u2212' : '+'}
+                </button>
+              </div>
+            );
+          }) : <p className="cat-pick-empty">No categories yet.</p>}
+        </div>
         <button type="submit">Save</button>
         <span className="save-status" aria-live="polite">{status}</span>
       </form>
