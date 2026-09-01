@@ -56,10 +56,27 @@ button:disabled { cursor: default; opacity: .35; }
 .message-page h1 { font-size: 18px; font-weight: 500; }
 
 .rail { width: 112px; flex: none; padding-left: 24px; }
-.rail-inner { position: sticky; top: 96px; display: flex; flex-direction: column; align-items: flex-start; }
-.r-item { border: 0; margin: 0; background: none; cursor: pointer; white-space: nowrap; line-height: 1; }
-.r-year { font-weight: 500; font-size: 13px; padding: 7px 0 3px; }
+.rail-inner { position: sticky; top: 96px; }
+/* Fixed window: dates scroll past a focal line instead of running down the page.
+   The mask dissolves both ends so items leave the ring rather than clipping. */
+.rail-window {
+  position: relative; height: min(62vh, 520px); overflow: hidden;
+  -webkit-mask: linear-gradient(180deg, transparent 0, #000 18%, #000 82%, transparent 100%);
+  mask: linear-gradient(180deg, transparent 0, #000 18%, #000 82%, transparent 100%);
+}
+.rail-track {
+  position: absolute; top: 0; left: 0; width: 100%;
+  display: flex; flex-direction: column; align-items: flex-start;
+  will-change: transform;
+}
+.r-item {
+  border: 0; margin: 0; background: none; cursor: pointer; white-space: nowrap;
+  line-height: 1; text-align: left; transition: transform .18s ease-out;
+}
+.r-year { font-weight: 500; font-size: 13px; padding: 7px 0 3px; letter-spacing: -.01em; }
 .r-month { font-size: 12px; padding: 3px 0; }
+.r-item:focus-visible { outline: 2px solid #333; outline-offset: 2px; border-radius: 2px; }
+@media (prefers-reduced-motion: reduce) { .r-item { transition: none; } }
 
 .lightbox { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(255,255,255,.97); }
 .lb-img { max-width: 92vw; max-height: 88vh; object-fit: contain; }
