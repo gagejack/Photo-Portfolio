@@ -135,6 +135,9 @@ function PhotoCard({ photo, categories, onChanged, selecting, selected, onToggle
       });
       setStatus('Saved');
       window.setTimeout(() => setStatus(''), 1500);
+      // The feed is ordered by taken_at, so a saved date moves the photo.
+      // Without a refetch the grid keeps showing it in its old position.
+      onChanged();
     } catch (error) {
       setStatus(error.message);
     }

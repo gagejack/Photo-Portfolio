@@ -336,3 +336,22 @@ test('uploading ignores a submitted category so photos are categorized explicitl
   assert.deepEqual(admin.photos[0].categoryIds, []);
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });
+
+test('patching a photo date persists it and re-sorts the feed', async () => {
+  const { db, base, cookie, server, photosRoot } = await harness();
+  const photoId = insertPhoto(db, {
+    filename: 'dated.jpg', takenAt: '2026-01-01T00:00:00Z', dateSource: 'exif', width: 100, height: 100,
+  });
+
+  const res = await fetch(`${base}/api/admin/photos/${photoId}`, {
+    method: 'PATCH',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ takenAt: '2019-07-04' }),
+  });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).takenAt, '2019-07-04T12:00:00.000Z');
+  assert.equal(getPhoto(db, photoId).takenAt, '2019-07-04T12:00:00.000Z');
+  assert.equal(getPhoto(db, photoId).dateSource, 'manual');
+
+  server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
+});
