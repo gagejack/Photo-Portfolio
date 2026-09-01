@@ -20,7 +20,7 @@ echo "Building frontend..."
 npm run build
 
 echo "Pruning development dependencies..."
-npm prune --omit=dev
+npm prune --omit=dev --no-save --package-lock=false
 
 echo "Restarting $SERVICE..."
 sudo systemctl restart "$SERVICE"
