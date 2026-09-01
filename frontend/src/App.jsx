@@ -9,7 +9,11 @@ function Projects({ authenticated }) {
   return (
     <>
       <Nav active="projects" authenticated={authenticated} />
-      <div className="stage"><p className="empty">Coming soon.</p></div>
+      <div className="stage">
+        <p className="empty">
+          <a href="https://speedmon.xyz" target="_blank" rel="noreferrer">speedmon.xyz</a>
+        </p>
+      </div>
     </>
   );
 }
