@@ -32,15 +32,15 @@ button:disabled { cursor: default; opacity: .35; }
   display: block; width: 13px; height: 13px; border-radius: 50%;
   background:
     conic-gradient(from 0deg,
-      #e6484f, #e08a34, #d9c531, #6fbf4a,
-      #37b9a2, #4a86d6, #7b5fd0, #cc4fb4, #e6484f);
+      #ff1f3d, #ff8a00, #ffd400, #45d62a,
+      #00c9b1, #1a7dff, #7a2bff, #ff2bb5, #ff1f3d);
   -webkit-mask: radial-gradient(circle at 50% 50%, transparent 27%, #000 29%);
   mask: radial-gradient(circle at 50% 50%, transparent 27%, #000 29%);
-  filter: saturate(.7) opacity(.85);
+  filter: saturate(1) opacity(.9);
   transition: filter .25s ease, transform .45s cubic-bezier(.4,0,.2,1);
 }
-.color-sort:hover .rgb-icon { filter: saturate(.85) opacity(1); }
-.color-sort.on .rgb-icon { filter: saturate(1.05) opacity(1); transform: rotate(180deg); }
+.color-sort:hover .rgb-icon { filter: saturate(1.15) opacity(1); }
+.color-sort.on .rgb-icon { filter: saturate(1.35) opacity(1); transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) {
   .rgb-icon { transition: filter .25s ease; }
   .color-sort.on .rgb-icon { transform: none; }
@@ -148,11 +148,11 @@ button:disabled { cursor: default; opacity: .35; }
   position: absolute; z-index: 2; top: 5px; left: 5px;
   display: grid; place-items: center; width: 22px; height: 22px; padding: 0;
   border: 0; border-radius: 50%; background: rgba(0,0,0,.42);
-  color: #fff; cursor: pointer; opacity: .75; transition: opacity .12s ease, color .12s ease;
+  color: #bbb; cursor: pointer; opacity: .75; transition: opacity .12s ease, color .12s ease, background-color .12s ease;
 }
 .thumb:hover .photo-star, .photo-star:focus-visible { opacity: 1; }
-.photo-star:hover { color: var(--star); }
-.photo-star.on { opacity: 1; color: var(--star); background: rgba(0,0,0,.5); }
+.photo-star:hover { color: #fff; }
+.photo-star.on { opacity: 1; color: #111; background: rgba(255,255,255,.9); }
 /* Selection mode owns the top-left corner; move the star clear of it. */
 .thumb .photo-select ~ .photo-star { left: 31px; }
 .photo-star:focus-visible, .cat-favorites:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
