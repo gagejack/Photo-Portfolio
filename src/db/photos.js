@@ -2,19 +2,21 @@ import { descendantIds } from './categories.js';
 
 const SELECT_COLS = `
   id, filename, taken_at AS takenAt, date_source AS dateSource,
-  width, height, caption
+  width, height, caption, dominant_color AS dominantColor
 `;
 
 const SELECT_P_COLS = `
   p.id, p.filename, p.taken_at AS takenAt, p.date_source AS dateSource,
-  p.width, p.height, p.caption
+  p.width, p.height, p.caption, p.dominant_color AS dominantColor
 `;
 
-export function insertPhoto(db, { filename, takenAt, dateSource, width, height, caption = null }) {
+export function insertPhoto(db, {
+  filename, takenAt, dateSource, width, height, caption = null, dominantColor = null,
+}) {
   const info = db.prepare(`
-    INSERT INTO photos (filename, taken_at, date_source, width, height, caption)
-    VALUES (?,?,?,?,?,?)
-  `).run(filename, takenAt, dateSource, width, height, caption);
+    INSERT INTO photos (filename, taken_at, date_source, width, height, caption, dominant_color)
+    VALUES (?,?,?,?,?,?,?)
+  `).run(filename, takenAt, dateSource, width, height, caption, dominantColor);
   return Number(info.lastInsertRowid);
 }
 
@@ -66,6 +68,10 @@ export function addPhotoCategories(db, photoIds, categoryIds) {
     }
   });
   tx();
+}
+
+export function setPhotoDominantColor(db, photoId, color) {
+  db.prepare('UPDATE photos SET dominant_color = ? WHERE id = ?').run(color, photoId);
 }
 
 export function updatePhoto(db, id, { caption, takenAt }) {

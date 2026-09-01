@@ -1,4 +1,4 @@
-:root { --ink: #333; --ink-soft: #555; --line: #f0f0f0; }
+:root { --ink: #333; --ink-soft: #555; --line: #f0f0f0; --pending: #b8722c; --star: #e0a930; }
 * { box-sizing: border-box; }
 html { min-width: 320px; }
 body {
@@ -25,6 +25,10 @@ button:disabled { cursor: default; opacity: .35; }
 
 .filters { display: flex; gap: 16px; flex-wrap: wrap; padding: 14px 32px 0; font-size: 12.5px; color: #999; }
 .filters .f.on { color: #111; }
+.color-sort { display: grid; place-items: center; width: 20px; height: 20px; margin: -1px 0; padding: 2px; border: 1px solid transparent; border-radius: 5px; background: none; cursor: pointer; }
+.color-sort.on { border-color: rgba(0,0,0,.35); }
+.color-sort:focus-visible { outline: 2px solid #333; outline-offset: 2px; }
+.rgb-icon { display: block; width: 12px; height: 12px; border-radius: 3px; background: linear-gradient(90deg, #e65a5a 0 33.33%, #58a86b 33.33% 66.66%, #577fc1 66.66%); }
 .stage { display: flex; padding: 18px 32px 80px; }
 .feed { flex: 1; min-width: 0; max-width: 1600px; margin: 0 auto; }
 .photo-row { display: flex; gap: 10px; margin-bottom: 10px; }
@@ -79,7 +83,7 @@ button:disabled { cursor: default; opacity: .35; }
 .meta button { cursor: pointer; }
 
 .admin-main { flex: 1; padding: 22px 26px; min-width: 0; }
-.admin-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 18px; }
+.admin-heading { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
 .admin-main h1 { font-weight: 500; font-size: 15px; margin: 0 0 3px; }
 .crumb { font-size: 11.5px; color: #999; }
 .storage-meter { width: min(280px, 42vw); flex: none; color: #777; font-size: 11px; }
@@ -89,6 +93,24 @@ button:disabled { cursor: default; opacity: .35; }
 .storage-track { height: 5px; overflow: hidden; border-radius: 999px; background: #ececec; }
 .storage-fill { display: block; height: 100%; background: #555; }
 .storage-summary { margin-top: 4px; color: #999; }
+.admin-title { flex: 1; min-width: 0; }
+.crumb-pending { color: var(--pending); }
+.save-bar { display: flex; align-items: center; gap: 8px; flex: none; padding-top: 1px; }
+.save-changes, .discard { border-radius: 3px; padding: 7px 13px; font-size: 12px; cursor: pointer; }
+.save-changes {
+  border: 1px solid var(--pending); background: var(--pending); color: #fff;
+  font-weight: 500; font-variant-numeric: tabular-nums;
+}
+.save-changes:hover:not(:disabled) { background: #a2631f; border-color: #a2631f; }
+.discard { border: 1px solid #ddd; background: #fff; color: #777; }
+.discard:hover:not(:disabled) { border-color: #aaa; color: #333; }
+.save-changes:focus-visible, .discard:focus-visible { outline: 2px solid #333; outline-offset: 2px; }
+
+/* Pending rail: an amber left edge marks every card that differs from
+   what is stored, so the grid maps your unsaved work at a glance. */
+.thumb.edited { border-left: 2px solid var(--pending); padding-left: 6px; margin-left: -8px; }
+.thumb.edited > img { box-shadow: 0 1px 6px rgba(184,114,44,.28); }
+
 .drop { display: block; border: 1px dashed #d0d0d0; border-radius: 4px; padding: 26px; text-align: center; font-size: 12.5px; color: #999; margin-bottom: 14px; cursor: pointer; }
 .drop.over { border-color: #888; color: #555; background: #fafafa; }
 .drop.disabled { cursor: wait; opacity: .7; }
@@ -105,6 +127,29 @@ button:disabled { cursor: default; opacity: .35; }
 .thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 .thumb { position: relative; }
 .thumb > img { width: 100%; height: 110px; object-fit: cover; border-radius: 2px; display: block; }
+.star-glyph { width: 15px; height: 15px; display: block; }
+.photo-star {
+  position: absolute; z-index: 2; top: 5px; left: 5px;
+  display: grid; place-items: center; width: 22px; height: 22px; padding: 0;
+  border: 0; border-radius: 50%; background: rgba(0,0,0,.42);
+  color: #fff; cursor: pointer; opacity: .75; transition: opacity .12s ease, color .12s ease;
+}
+.thumb:hover .photo-star, .photo-star:focus-visible { opacity: 1; }
+.photo-star:hover { color: var(--star); }
+.photo-star.on { opacity: 1; color: var(--star); background: rgba(0,0,0,.5); }
+/* Selection mode owns the top-left corner; move the star clear of it. */
+.thumb .photo-select ~ .photo-star { left: 31px; }
+.photo-star:focus-visible, .cat-favorites:focus-visible { outline: 2px solid #fff; outline-offset: -3px; }
+.cat-favorites { display: flex; align-items: center; color: var(--star); }
+.cat-favorites .star-glyph { width: 16px; height: 16px; }
+
+/* Drag reordering: the handle grabs, and a rule shows where the row lands. */
+.category-menu-button[draggable="true"] { cursor: grab; }
+.category-menu-button[draggable="true"]:active { cursor: grabbing; }
+.cat-row.dragging { opacity: .4; }
+.cat-row.drop-before { box-shadow: inset 0 2px 0 var(--ink); }
+.cat-row.drop-after { box-shadow: inset 0 -2px 0 var(--ink); }
+
 .photo-select { position: absolute; z-index: 1; top: 5px; left: 5px; width: 20px; height: 20px; border: 1px solid rgba(255,255,255,.8); border-radius: 3px; background: rgba(0,0,0,.5); color: #fff; font-size: 14px; line-height: 1; cursor: pointer; }
 .photo-select.selected { border-color: #333; background: #fff; color: #333; }
 .thumb .x { position: absolute; top: 5px; right: 5px; width: 18px; height: 18px; border: 0; border-radius: 50%; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; line-height: 1; cursor: pointer; }
@@ -139,7 +184,6 @@ button:disabled { cursor: default; opacity: .35; }
 
 .meta { display: flex; flex-direction: column; gap: 4px; margin-top: 5px; }
 .meta input, .meta select, .meta button { font-size: 11px; padding: 3px 5px; }
-.save-status { min-height: 16px; font-size: 11px; color: #777; }
 
 .login { max-width: 280px; margin: 18vh auto; display: flex; flex-direction: column; gap: 10px; }
 .login-brand { font-size: 16px; font-weight: 500; margin: 0 0 8px; }
@@ -149,7 +193,7 @@ button:disabled { cursor: default; opacity: .35; }
 .login button { background: #333; color: #fff; border-color: #333; cursor: pointer; }
 .error { color: #c33; font-size: 12.5px; margin: 0; }
 
-@media (prefers-reduced-motion: reduce) { .up-fill { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .up-fill, .photo-star { transition: none; } }
 @media (max-width: 720px) {
   .site-nav { padding-left: 16px; padding-right: 16px; }
   .links { gap: 12px; }
@@ -158,6 +202,8 @@ button:disabled { cursor: default; opacity: .35; }
   .admin-cols { display: block; }
   .side { width: 100%; padding: 16px; border-right: 0; border-bottom: 1px solid var(--line); }
   .admin-main { padding: 18px 16px; }
-  .admin-heading { gap: 14px; }
+  .admin-heading { flex-wrap: wrap; gap: 12px; }
+  .save-bar { order: 3; width: 100%; }
+  .save-changes { flex: 1; }
   .storage-meter { width: min(230px, 48vw); }
 }

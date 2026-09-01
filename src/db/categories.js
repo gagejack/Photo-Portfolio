@@ -89,6 +89,49 @@ export function deleteCategory(db, id) {
   db.prepare('DELETE FROM categories WHERE id = ?').run(id);
 }
 
+// Favorites is seeded on every open so a fresh database and an existing one
+// both end up with exactly one. Position -1 keeps it above user categories,
+// which are numbered from 0 upward.
+export const FAVORITES_SLUG = 'favorites';
+
+export function ensureFavorites(db) {
+  const existing = db.prepare(
+    'SELECT id FROM categories WHERE slug = ? AND parent_id IS NULL'
+  ).get(FAVORITES_SLUG);
+  if (existing) return existing.id;
+  const info = db.prepare(
+    "INSERT INTO categories (name, slug, parent_id, flag, position) VALUES (?,?,NULL,NULL,-1)"
+  ).run('Favorites', FAVORITES_SLUG);
+  return Number(info.lastInsertRowid);
+}
+
+export function getFavoritesId(db) {
+  return db.prepare(
+    'SELECT id FROM categories WHERE slug = ? AND parent_id IS NULL'
+  ).get(FAVORITES_SLUG)?.id ?? null;
+}
+
+// Reorder siblings by writing the given order back as positions. Every id must
+// be a sibling of the same parent, so a reorder can never smuggle in a move
+// between parents -- that is reparentCategory's job.
+export function reorderCategories(db, parentId, orderedIds) {
+  const apply = db.transaction(() => {
+    const siblings = db.prepare(
+      'SELECT id FROM categories WHERE parent_id IS ?'
+    ).all(parentId).map(row => row.id);
+
+    if (orderedIds.length !== siblings.length
+      || orderedIds.some(id => !siblings.includes(id))
+      || new Set(orderedIds).size !== orderedIds.length) {
+      throw new Error('Order must list each sibling category exactly once');
+    }
+
+    const update = db.prepare('UPDATE categories SET position = ? WHERE id = ?');
+    orderedIds.forEach((id, index) => update.run(index, id));
+  });
+  apply();
+}
+
 export function reparentCategory(db, id, parentId) {
   if (parentId !== null && descendantIds(db, id).includes(parentId)) {
     throw new Error('Cannot reparent a category into its own subtree: cycle');

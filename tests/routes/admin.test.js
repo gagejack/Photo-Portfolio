@@ -9,7 +9,7 @@ import { openDb } from '../../src/db/index.js';
 import { createApp } from '../../src/app.js';
 import { photoPaths, stagingDir } from '../../src/images/pipeline.js';
 import { listPhotos, getPhoto, insertPhoto, photoCategoryIds } from '../../src/db/photos.js';
-import { listTree, createCategory } from '../../src/db/categories.js';
+import { listTree, createCategory, getFavoritesId } from '../../src/db/categories.js';
 
 async function harness() {
   const photosRoot = mkdtempSync(join(tmpdir(), 'pp-admin-'));
@@ -169,7 +169,7 @@ test('creating a category makes it visible in the public feed API', async () => 
     body: JSON.stringify({ name: 'Urban', flag: null }),
   });
   const feed = await (await fetch(`${base}/api/feed`)).json();
-  assert.equal(feed.categories[0].name, 'Urban');
+  assert.ok(feed.categories.some(category => category.name === 'Urban'));
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });
 
@@ -201,7 +201,7 @@ test('category actions rename categories and limit each parent to three children
   });
   assert.equal(rename.status, 200);
   assert.equal((await rename.json()).name, 'Travel');
-  assert.equal(listTree(db)[0].name, 'Travel');
+  assert.ok(listTree(db).some(node => node.name === 'Travel'));
 
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });
@@ -352,6 +352,119 @@ test('patching a photo date persists it and re-sorts the feed', async () => {
   assert.equal((await res.json()).takenAt, '2019-07-04T12:00:00.000Z');
   assert.equal(getPhoto(db, photoId).takenAt, '2019-07-04T12:00:00.000Z');
   assert.equal(getPhoto(db, photoId).dateSource, 'manual');
+
+  server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
+});
+
+test('patching several photos in sequence saves every one independently', async () => {
+  const { db, base, cookie, server, photosRoot } = await harness();
+  const travel = createCategory(db, { name: 'Travel', slug: 'travel' });
+  const ids = [1, 2, 3].map(n => insertPhoto(db, {
+    filename: `batch${n}.jpg`, takenAt: '2026-01-01T00:00:00Z', dateSource: 'exif', width: 100, height: 100,
+  }));
+
+  for (const [index, id] of ids.entries()) {
+    const res = await fetch(`${base}/api/admin/photos/${id}`, {
+      method: 'PATCH',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        caption: `Photo ${index}`,
+        takenAt: `202${index}-05-0${index + 1}`,
+        categoryIds: index === 1 ? [] : [travel],
+      }),
+    });
+    assert.equal(res.status, 200);
+  }
+
+  ids.forEach((id, index) => {
+    const photo = getPhoto(db, id);
+    assert.equal(photo.caption, `Photo ${index}`);
+    assert.equal(photo.takenAt, `202${index}-05-0${index + 1}T12:00:00.000Z`);
+    assert.deepEqual(photoCategoryIds(db, id), index === 1 ? [] : [travel]);
+  });
+
+  server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
+});
+
+test('reordering categories persists the new sibling order', async () => {
+  const { db, base, cookie, server, photosRoot } = await harness();
+  const alpha = createCategory(db, { name: 'Alpha', slug: 'alpha' });
+  const beta = createCategory(db, { name: 'Beta', slug: 'beta' });
+  const favorites = getFavoritesId(db);
+
+  const res = await fetch(`${base}/api/admin/categories/reorder`, {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ parentId: null, orderedIds: [beta, alpha, favorites] }),
+  });
+  assert.equal(res.status, 200);
+  assert.deepEqual((await res.json()).categories.map(node => node.id), [beta, alpha, favorites]);
+  assert.deepEqual(listTree(db).map(node => node.id), [beta, alpha, favorites]);
+
+  server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
+});
+
+test('a reorder cannot move a category between parents', async () => {
+  const { db, base, cookie, server, photosRoot } = await harness();
+  const travel = createCategory(db, { name: 'Travel', slug: 'travel' });
+  const japan = createCategory(db, { name: 'Japan', slug: 'japan', parentId: travel });
+  const favorites = getFavoritesId(db);
+
+  const res = await fetch(`${base}/api/admin/categories/reorder`, {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ parentId: null, orderedIds: [japan, travel, favorites] }),
+  });
+  assert.equal(res.status, 400);
+  assert.deepEqual(listTree(db).map(node => node.id), [favorites, travel]);
+  assert.equal(listTree(db).find(node => node.id === travel).children[0].id, japan);
+
+  server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
+});
+
+test('favorites is protected from rename and deletion', async () => {
+  const { db, base, cookie, server, photosRoot } = await harness();
+  const favorites = getFavoritesId(db);
+
+  const rename = await fetch(`${base}/api/admin/categories/${favorites}`, {
+    method: 'PATCH',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ name: 'Renamed' }),
+  });
+  assert.equal(rename.status, 400);
+
+  const removed = await fetch(`${base}/api/admin/categories/${favorites}`, {
+    method: 'DELETE',
+    headers: { cookie },
+  });
+  assert.equal(removed.status, 400);
+  assert.equal(getFavoritesId(db), favorites);
+
+  server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
+});
+
+test('starring a photo files it under favorites', async () => {
+  const { db, base, cookie, server, photosRoot } = await harness();
+  const favorites = getFavoritesId(db);
+  const photoId = insertPhoto(db, {
+    filename: 'starred.jpg', takenAt: '2026-01-01T00:00:00Z', dateSource: 'exif', width: 100, height: 100,
+  });
+
+  const star = await fetch(`${base}/api/admin/photos/${photoId}`, {
+    method: 'PATCH',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ categoryIds: [favorites] }),
+  });
+  assert.equal(star.status, 200);
+  assert.deepEqual(photoCategoryIds(db, photoId), [favorites]);
+
+  const unstar = await fetch(`${base}/api/admin/photos/${photoId}`, {
+    method: 'PATCH',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ categoryIds: [] }),
+  });
+  assert.equal(unstar.status, 200);
+  assert.deepEqual(photoCategoryIds(db, photoId), []);
 
   server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });

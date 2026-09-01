@@ -1,5 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import Database from 'better-sqlite3';
 import { openDb } from '../../src/db/index.js';
 
 test('openDb creates tables and enforces foreign keys', () => {
@@ -13,6 +17,31 @@ test('openDb creates tables and enforces foreign keys', () => {
 
   assert.equal(db.pragma('foreign_keys', { simple: true }), 1);
   db.close();
+});
+
+test('openDb adds dominant color storage to an existing database', () => {
+  const root = mkdtempSync(join(tmpdir(), 'pp-db-upgrade-'));
+  const path = join(root, 'legacy.db');
+  const legacy = new Database(path);
+  legacy.exec(`
+    CREATE TABLE photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      filename TEXT NOT NULL UNIQUE,
+      taken_at TEXT NOT NULL,
+      date_source TEXT NOT NULL,
+      width INTEGER NOT NULL,
+      height INTEGER NOT NULL,
+      caption TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  legacy.close();
+
+  const db = openDb(path);
+  const columns = db.pragma('table_info(photos)').map(column => column.name);
+  assert.ok(columns.includes('dominant_color'));
+  db.close();
+  rmSync(root, { recursive: true, force: true });
 });
 
 test('deleting a photo cascades to its category links', () => {

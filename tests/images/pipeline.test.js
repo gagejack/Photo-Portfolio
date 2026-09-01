@@ -40,6 +40,13 @@ test('records the original dimensions', async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
+test('records a dominant color for sorting', async () => {
+  const root = tmpRoot();
+  const result = await processUpload({ buffer: await jpeg(100, 100), mtime: new Date(), photosRoot: root });
+  assert.match(result.dominantColor, /^#[0-9a-f]{6}$/);
+  rmSync(root, { recursive: true, force: true });
+});
+
 test('derivatives are resized and the original is untouched', async () => {
   const root = tmpRoot();
   const buf = await jpeg(2400, 1600);

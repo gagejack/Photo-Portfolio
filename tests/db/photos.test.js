@@ -30,6 +30,16 @@ test('listPhotos returns newest first', () => {
   db.close();
 });
 
+test('dominant color is stored and returned with a photo', () => {
+  const db = openDb(':memory:');
+  const id = insertPhoto(db, {
+    filename: 'color.jpg', takenAt: '2025-01-01T00:00:00Z', dateSource: 'exif',
+    width: 100, height: 100, dominantColor: '#123456',
+  });
+  assert.equal(getPhoto(db, id).dominantColor, '#123456');
+  db.close();
+});
+
 test('filtering by a parent includes photos tagged only to descendants', () => {
   const { db, urban } = seed();
   const names = listPhotos(db, { categoryId: urban }).map(p => p.filename);

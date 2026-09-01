@@ -1,9 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import argon2 from 'argon2';
+import sharp from 'sharp';
 import { openDb } from '../../src/db/index.js';
 import { createCategory } from '../../src/db/categories.js';
-import { insertPhoto, setPhotoCategories } from '../../src/db/photos.js';
+import { getPhoto, insertPhoto, setPhotoCategories } from '../../src/db/photos.js';
 import { createApp } from '../../src/app.js';
 import { buildRail } from '../../frontend/src/layout.js';
 
@@ -12,9 +16,9 @@ function seeded() {
   const urban = createCategory(db, { name: 'Urban', slug: 'urban' });
   const kyoto = createCategory(db, { name: 'Kyoto', slug: 'kyoto', parentId: urban });
   const cars = createCategory(db, { name: 'Cars', slug: 'cars' });
-  const a = insertPhoto(db, { filename: 'a.jpg', takenAt: '2025-10-02T00:00:00Z', dateSource: 'exif', width: 4000, height: 2250 });
-  const b = insertPhoto(db, { filename: 'b.jpg', takenAt: '2025-08-11T00:00:00Z', dateSource: 'exif', width: 3000, height: 4000 });
-  const c = insertPhoto(db, { filename: 'c.jpg', takenAt: '2023-04-09T00:00:00Z', dateSource: 'exif', width: 4000, height: 3000 });
+  const a = insertPhoto(db, { filename: 'a.jpg', takenAt: '2025-10-02T00:00:00Z', dateSource: 'exif', width: 4000, height: 2250, dominantColor: '#0000ff' });
+  const b = insertPhoto(db, { filename: 'b.jpg', takenAt: '2025-08-11T00:00:00Z', dateSource: 'exif', width: 3000, height: 4000, dominantColor: '#00ff00' });
+  const c = insertPhoto(db, { filename: 'c.jpg', takenAt: '2023-04-09T00:00:00Z', dateSource: 'exif', width: 4000, height: 3000, dominantColor: '#ff0000' });
   setPhotoCategories(db, a, [kyoto]);
   setPhotoCategories(db, b, [cars]);
   setPhotoCategories(db, c, [urban]);
@@ -62,7 +66,7 @@ test('the feed API returns every photo newest first', async () => {
   const { server, base } = await listen(createApp({ db, config }));
   const body = await (await fetch(`${base}/api/feed`)).json();
   assert.deepEqual(body.photos.map(photo => photo.filename), ['a.jpg', 'b.jpg', 'c.jpg']);
-  assert.deepEqual(body.categories.map(category => category.name), ['Urban', 'Cars']);
+  assert.deepEqual(body.categories.map(category => category.name), ['Favorites', 'Urban', 'Cars']);
   server.close(); db.close();
 });
 
@@ -73,6 +77,39 @@ test('category feeds include descendants and exclude other branches', async () =
   assert.deepEqual(body.photos.map(photo => photo.filename), ['a.jpg', 'c.jpg']);
   assert.equal(body.activeSlug, 'urban');
   server.close(); db.close();
+});
+
+test('color sorting works for the full feed and a selected category', async () => {
+  const { db } = seeded();
+  const { server, base } = await listen(createApp({ db, config }));
+  const all = await (await fetch(`${base}/api/feed?sort=color`)).json();
+  assert.deepEqual(all.photos.map(photo => photo.filename), ['c.jpg', 'b.jpg', 'a.jpg']);
+
+  const urban = await (await fetch(`${base}/api/feed?category=urban&sort=color`)).json();
+  assert.deepEqual(urban.photos.map(photo => photo.filename), ['c.jpg', 'a.jpg']);
+  assert.equal(urban.sort, 'color');
+  server.close(); db.close();
+});
+
+test('color sorting backfills a legacy photo from its thumbnail', async () => {
+  const photosRoot = mkdtempSync(join(tmpdir(), 'pp-color-'));
+  mkdirSync(join(photosRoot, 'thumb'), { recursive: true });
+  const db = openDb(':memory:');
+  const photoId = insertPhoto(db, {
+    filename: 'legacy.jpg', takenAt: '2024-01-01T00:00:00Z', dateSource: 'exif',
+    width: 100, height: 100,
+  });
+  await sharp({ create: { width: 30, height: 30, channels: 3, background: '#e22' } })
+    .webp()
+    .toFile(join(photosRoot, 'thumb', 'legacy.webp'));
+
+  const appConfig = { ...config, photosRoot };
+  const { server, base } = await listen(createApp({ db, config: appConfig }));
+  const body = await (await fetch(`${base}/api/feed?sort=color`)).json();
+  assert.match(body.photos[0].dominantColor, /^#[0-9a-f]{6}$/);
+  assert.equal(getPhoto(db, photoId).dominantColor, body.photos[0].dominantColor);
+
+  server.close(); db.close(); rmSync(photosRoot, { recursive: true, force: true });
 });
 
 test('an unknown category returns a JSON 404', async () => {
@@ -90,7 +127,7 @@ test('category names and empty feeds are represented safely as data', async () =
   createCategory(db, { name, slug: 'xss' });
   const { server, base } = await listen(createApp({ db, config }));
   const body = await (await fetch(`${base}/api/feed`)).json();
-  assert.equal(body.categories[0].name, name);
+  assert.equal(body.categories.find(category => category.slug === 'xss').name, name);
   assert.deepEqual(body.photos, []);
   server.close(); db.close();
 });

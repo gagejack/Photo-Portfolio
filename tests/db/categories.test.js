@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { openDb } from '../../src/db/index.js';
 import {
   createCategory, listTree, descendantIds, ancestorIds, deleteCategory, reparentCategory, renameCategory,
-  CategoryChildrenLimitError,
+  reorderCategories, ensureFavorites, getFavoritesId, CategoryChildrenLimitError,
 } from '../../src/db/categories.js';
 
 function fixture() {
@@ -37,7 +37,7 @@ test('ancestorIds includes the category and each parent up to the root', () => {
 
 test('listTree nests children under parents', () => {
   const { db } = fixture();
-  const tree = listTree(db);
+  const tree = listTree(db).filter(node => node.slug !== 'favorites');
   assert.equal(tree.length, 2);
   const urban = tree.find(c => c.slug === 'urban');
   assert.equal(urban.children.length, 1);
@@ -50,7 +50,8 @@ test('listTree nests children under parents', () => {
 test('deleting a parent removes its whole subtree', () => {
   const { db, urban } = fixture();
   deleteCategory(db, urban);
-  const remaining = db.prepare('SELECT slug FROM categories').all().map(r => r.slug);
+  const remaining = db.prepare('SELECT slug FROM categories').all()
+    .map(r => r.slug).filter(slug => slug !== 'favorites');
   assert.deepEqual(remaining, ['nature']);
   db.close();
 });
@@ -102,5 +103,48 @@ test('a category cannot have more than three direct children', () => {
     () => createCategory(db, { name: 'd', slug: 'd', parentId: parent }),
     CategoryChildrenLimitError,
   );
+  db.close();
+});
+
+test('favorites is seeded once and sorts above user categories', () => {
+  const db = openDb(':memory:');
+  const favoritesId = getFavoritesId(db);
+  assert.ok(favoritesId, 'favorites should exist on a fresh database');
+
+  // ensureFavorites runs on every open; it must never create a second one.
+  ensureFavorites(db);
+  ensureFavorites(db);
+  const roots = listTree(db).filter(node => node.slug === 'favorites');
+  assert.equal(roots.length, 1);
+
+  createCategory(db, { name: 'Urban', slug: 'urban' });
+  assert.equal(listTree(db)[0].slug, 'favorites');
+  db.close();
+});
+
+test('reordering siblings rewrites their positions', () => {
+  const db = openDb(':memory:');
+  const a = createCategory(db, { name: 'Alpha', slug: 'alpha' });
+  const b = createCategory(db, { name: 'Beta', slug: 'beta' });
+  const c = createCategory(db, { name: 'Gamma', slug: 'gamma' });
+  const favorites = getFavoritesId(db);
+
+  reorderCategories(db, null, [c, favorites, a, b]);
+  assert.deepEqual(listTree(db).map(node => node.id), [c, favorites, a, b]);
+  db.close();
+});
+
+test('reordering rejects a list that is not exactly the sibling set', () => {
+  const db = openDb(':memory:');
+  const parent = createCategory(db, { name: 'Travel', slug: 'travel' });
+  const child = createCategory(db, { name: 'Japan', slug: 'japan', parentId: parent });
+  const favorites = getFavoritesId(db);
+
+  // Missing a sibling, duplicated ids, and a foreign child all must fail so a
+  // reorder can never silently drop or reparent a category.
+  assert.throws(() => reorderCategories(db, null, [parent]), /exactly once/);
+  assert.throws(() => reorderCategories(db, null, [parent, parent]), /exactly once/);
+  assert.throws(() => reorderCategories(db, null, [parent, favorites, child]), /exactly once/);
+  assert.deepEqual(listTree(db).map(node => node.id), [favorites, parent]);
   db.close();
 });

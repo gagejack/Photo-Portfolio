@@ -22,13 +22,19 @@ export default function Portfolio({ slug, authenticated }) {
   const [feed, setFeed] = useState(null);
   const [error, setError] = useState(null);
   const [lightbox, setLightbox] = useState(-1);
+  const [colorSorted, setColorSorted] = useState(
+    () => new URLSearchParams(window.location.search).get('sort') === 'color',
+  );
 
   useEffect(() => {
     setFeed(null);
     setError(null);
-    const query = slug ? `?category=${encodeURIComponent(slug)}` : '';
+    const params = new URLSearchParams();
+    if (slug) params.set('category', slug);
+    if (colorSorted) params.set('sort', 'color');
+    const query = params.size ? `?${params}` : '';
     api(`/api/feed${query}`).then(setFeed).catch(setError);
-  }, [slug]);
+  }, [slug, colorSorted]);
 
   useEffect(() => {
     const node = feedRef.current;
@@ -53,14 +59,31 @@ export default function Portfolio({ slug, authenticated }) {
   const closeLightbox = useCallback(() => setLightbox(-1), []);
   const changeLightbox = useCallback(index => setLightbox(index), []);
 
+  function toggleColorSort() {
+    const next = !colorSorted;
+    const path = slug ? `/c/${encodeURIComponent(slug)}` : '/';
+    window.history.replaceState({}, '', next ? `${path}?sort=color` : path);
+    setColorSorted(next);
+  }
+
   return (
     <>
       <Nav active="portfolio" authenticated={authenticated} />
       {feed && (
         <div className="filters" aria-label="Portfolio categories">
-          <a className={`f ${slug ? '' : 'on'}`} href="/">All</a>
+          <button
+            className={`color-sort ${colorSorted ? 'on' : ''}`}
+            type="button"
+            title="Sort by dominant color"
+            aria-label="Sort by dominant color"
+            aria-pressed={colorSorted}
+            onClick={toggleColorSort}
+          >
+            <span className="rgb-icon" aria-hidden="true" />
+          </button>
+          <a className={`f ${slug ? '' : 'on'}`} href={colorSorted ? '/?sort=color' : '/'}>All</a>
           {feed.categories.map(category => (
-            <a key={category.id} className={`f ${slug === category.slug ? 'on' : ''}`} href={`/c/${encodeURIComponent(category.slug)}`}>{category.name}</a>
+            <a key={category.id} className={`f ${slug === category.slug ? 'on' : ''}`} href={`/c/${encodeURIComponent(category.slug)}${colorSorted ? '?sort=color' : ''}`}>{category.name}</a>
           ))}
         </div>
       )}
@@ -95,7 +118,7 @@ export default function Portfolio({ slug, authenticated }) {
                 </div>
               )) : <p className="empty">No photos yet.</p>}
             </main>
-            <DateRail photos={feed.photos} />
+            {!colorSorted && <DateRail photos={feed.photos} />}
           </>
         )}
       </div>

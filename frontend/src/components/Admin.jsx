@@ -46,9 +46,26 @@ function StorageBar({ storage }) {
   );
 }
 
+const FAVORITES_SLUG = 'favorites';
+
+function Star({ filled }) {
+  return (
+    <svg className="star-glyph" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        d="M12 2.6l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.44 6.19 20.5 7.3 14.03 2.6 9.45l6.5-.95L12 2.6z"
+        fill={filled ? 'currentColor' : 'none'}
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function CategoryTree({
   nodes,
   depth = 0,
+  parentId = null,
   activeId,
   openMenuId,
   onToggleMenu,
@@ -56,41 +73,68 @@ function CategoryTree({
   onSelectPhotos,
   onRename,
   onDelete,
+  drag,
 }) {
-  return nodes.map(node => (
+  return nodes.map((node, index) => (
     <div key={node.id}>
-      <div className={`cat-row lvl${Math.min(depth, 3)} ${activeId === node.id ? 'active' : ''}`}>
+      <div
+        className={[
+          `cat-row lvl${Math.min(depth, 3)}`,
+          activeId === node.id ? 'active' : '',
+          drag.draggingId === node.id ? 'dragging' : '',
+          drag.overId === node.id ? `drop-${drag.overSide}` : '',
+        ].filter(Boolean).join(' ')}
+        onDragOver={event => drag.onDragOver(event, node, parentId, index)}
+        onDrop={event => drag.onDrop(event, parentId)}
+      >
         <div className="category-actions">
           <button
             className="category-menu-button"
             type="button"
-            title={`Edit ${node.name}`}
-            aria-label={`Edit ${node.name}`}
+            title={`Reorder or edit ${node.name}`}
+            aria-label={`Reorder or edit ${node.name}`}
             aria-haspopup="menu"
             aria-expanded={openMenuId === node.id}
+            draggable
+            onDragStart={event => drag.onDragStart(event, node, parentId)}
+            onDragEnd={drag.onDragEnd}
             onClick={() => onToggleMenu(node.id)}
           >
             <span aria-hidden="true">☰</span>
           </button>
           {openMenuId === node.id && (
             <div className="category-menu" role="menu" aria-label={`Actions for ${node.name}`}>
-              <button
-                type="button"
-                role="menuitem"
-                disabled={node.children.length >= 3}
-                title={node.children.length >= 3 ? 'A category can have at most 3 subcategories' : undefined}
-                onClick={() => onAddSubcategory(node)}
-              >
-                Add subcategory
-              </button>
-              <button type="button" role="menuitem" onClick={() => onSelectPhotos(node)}>Select photos</button>
-              <button type="button" role="menuitem" onClick={() => onRename(node)}>Rename</button>
-              <button className="category-menu-delete" type="button" role="menuitem" onClick={() => onDelete(node)}>Delete</button>
+              {node.slug === FAVORITES_SLUG ? (
+                <button type="button" role="menuitem" onClick={() => onSelectPhotos(node)}>Select photos</button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    disabled={node.children.length >= 3}
+                    title={node.children.length >= 3 ? 'A category can have at most 3 subcategories' : undefined}
+                    onClick={() => onAddSubcategory(node)}
+                  >
+                    Add subcategory
+                  </button>
+                  <button type="button" role="menuitem" onClick={() => onSelectPhotos(node)}>Select photos</button>
+                  <button type="button" role="menuitem" onClick={() => onRename(node)}>Rename</button>
+                  <button className="category-menu-delete" type="button" role="menuitem" onClick={() => onDelete(node)}>Delete</button>
+                </>
+              )}
             </div>
           )}
         </div>
-        <Flag code={node.flag} />
-        <a href={`/admin?c=${node.id}`}>{node.name}</a>
+        {node.slug === FAVORITES_SLUG ? (
+          <a className="cat-favorites" href={`/admin?c=${node.id}`} title="Favorites" aria-label="Favorites">
+            <Star filled />
+          </a>
+        ) : (
+          <>
+            <Flag code={node.flag} />
+            <a href={`/admin?c=${node.id}`}>{node.name}</a>
+          </>
+        )}
         <span className="count">{node.photoCount}</span>
       </div>
       {node.children.length > 0 && (
@@ -98,6 +142,7 @@ function CategoryTree({
           <CategoryTree
             nodes={node.children}
             depth={depth + 1}
+            parentId={node.id}
             activeId={activeId}
             openMenuId={openMenuId}
             onToggleMenu={onToggleMenu}
@@ -105,6 +150,7 @@ function CategoryTree({
             onSelectPhotos={onSelectPhotos}
             onRename={onRename}
             onDelete={onDelete}
+            drag={drag}
           />
         </div>
       )}
@@ -112,35 +158,35 @@ function CategoryTree({
   ));
 }
 
-function PhotoCard({ photo, categories, onChanged, selecting, selected, onToggleSelection }) {
-  const [caption, setCaption] = useState(photo.caption ?? '');
-  const [takenAt, setTakenAt] = useState(photo.takenAt.slice(0, 10));
-  const [categoryIds, setCategoryIds] = useState(photo.categoryIds.map(String));
-  const [status, setStatus] = useState('');
+// The stored form of a photo's editable fields. Draft state is compared
+// against this to decide which photos are dirty and need saving.
+function baseDraft(photo) {
+  return {
+    caption: photo.caption ?? '',
+    takenAt: photo.takenAt.slice(0, 10),
+    categoryIds: photo.categoryIds.map(String),
+  };
+}
+
+function isDirty(draft, photo) {
+  const stored = baseDraft(photo);
+  return draft.caption !== stored.caption
+    || draft.takenAt !== stored.takenAt
+    || draft.categoryIds.length !== stored.categoryIds.length
+    || draft.categoryIds.some(id => !stored.categoryIds.includes(id));
+}
+
+function PhotoCard({ photo, categories, draft, dirty, favoritesId, onEdit, onChanged, selecting, selected, onToggleSelection }) {
+  const { caption, takenAt, categoryIds } = draft;
   const base = photoBase(photo.filename);
+  const favorited = favoritesId !== null && categoryIds.includes(String(favoritesId));
 
   function toggleCategory(id) {
-    setCategoryIds(current => (current.includes(id)
-      ? current.filter(value => value !== id)
-      : [...current, id]));
-  }
-
-  async function save(event) {
-    event.preventDefault();
-    setStatus('Saving…');
-    try {
-      await api(`/api/admin/photos/${photo.id}`, {
-        method: 'PATCH',
-        body: { caption, takenAt, categoryIds: categoryIds.map(Number) },
-      });
-      setStatus('Saved');
-      window.setTimeout(() => setStatus(''), 1500);
-      // The feed is ordered by taken_at, so a saved date moves the photo.
-      // Without a refetch the grid keeps showing it in its old position.
-      onChanged();
-    } catch (error) {
-      setStatus(error.message);
-    }
+    onEdit(photo.id, {
+      categoryIds: categoryIds.includes(id)
+        ? categoryIds.filter(value => value !== id)
+        : [...categoryIds, id],
+    });
   }
 
   async function remove() {
@@ -149,7 +195,7 @@ function PhotoCard({ photo, categories, onChanged, selecting, selected, onToggle
   }
 
   return (
-    <article className="thumb">
+    <article className={`thumb ${dirty ? 'edited' : ''}`}>
       <img src={`/photos/thumb/${base}.webp`} alt={caption} loading="lazy" />
       {selecting && (
         <button
@@ -162,10 +208,22 @@ function PhotoCard({ photo, categories, onChanged, selecting, selected, onToggle
           {selected ? '✓' : '+'}
         </button>
       )}
+      {favoritesId !== null && (
+        <button
+          className={`photo-star ${favorited ? 'on' : ''}`}
+          type="button"
+          aria-pressed={favorited}
+          aria-label={favorited ? 'Remove from favorites' : 'Add to favorites'}
+          title={favorited ? 'Remove from favorites' : 'Add to favorites'}
+          onClick={() => toggleCategory(String(favoritesId))}
+        >
+          <Star filled={favorited} />
+        </button>
+      )}
       <button className="x" type="button" aria-label="Delete photo" onClick={remove}>&times;</button>
-      <form className="meta" onSubmit={save}>
-        <input aria-label="Date taken" type="date" value={takenAt} onChange={event => setTakenAt(event.target.value)} />
-        <input aria-label="Caption" type="text" value={caption} onChange={event => setCaption(event.target.value)} placeholder="Caption" />
+      <div className="meta">
+        <input aria-label="Date taken" type="date" value={takenAt} onChange={event => onEdit(photo.id, { takenAt: event.target.value })} />
+        <input aria-label="Caption" type="text" value={caption} onChange={event => onEdit(photo.id, { caption: event.target.value })} placeholder="Caption" />
         <div className="cat-picker" role="group" aria-label="Categories">
           {categories.length ? categories.map(category => {
             const id = String(category.id);
@@ -187,9 +245,7 @@ function PhotoCard({ photo, categories, onChanged, selecting, selected, onToggle
             );
           }) : <p className="cat-pick-empty">No categories yet.</p>}
         </div>
-        <button type="submit">Save</button>
-        <span className="save-status" aria-live="polite">{status}</span>
-      </form>
+      </div>
     </article>
   );
 }
@@ -201,11 +257,19 @@ export default function Admin({ authenticated }) {
   const [openMenuId, setOpenMenuId] = useState(null);
   const [selectionCategory, setSelectionCategory] = useState(null);
   const [selectedPhotoIds, setSelectedPhotoIds] = useState([]);
+  const [drafts, setDrafts] = useState({});
+  const [dragState, setDragState] = useState({ id: null, parentId: null, overId: null, overSide: 'before' });
+  const [saveStatus, setSaveStatus] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const query = activeId ? `?categoryId=${activeId}` : '';
-      setData(await api(`/api/admin${query}`));
+      const next = await api(`/api/admin${query}`);
+      setData(next);
+      // Drafts are re-seeded from what the server just returned, so a
+      // completed save leaves nothing marked as pending.
+      setDrafts(Object.fromEntries(next.photos.map(photo => [photo.id, baseDraft(photo)])));
       setError('');
     } catch (requestError) {
       if (requestError.status === 401) {
@@ -299,6 +363,102 @@ export default function Admin({ authenticated }) {
 
   const categories = data ? flatten(data.categories) : [];
   const active = categories.find(category => category.id === activeId);
+  const favoritesId = categories.find(category => category.slug === FAVORITES_SLUG)?.id ?? null;
+  const dirtyPhotos = (data?.photos ?? []).filter(
+    photo => drafts[photo.id] && isDirty(drafts[photo.id], photo),
+  );
+
+  // Reordering is sibling-only: a drop onto a different parent's row is
+  // ignored rather than reparenting, so dragging can never restructure the
+  // tree by accident. Reparenting stays an explicit action.
+  function onDragStart(event, node, parentId) {
+    setOpenMenuId(null);
+    event.dataTransfer.effectAllowed = 'move';
+    // Firefox will not start a drag unless some data is set.
+    event.dataTransfer.setData('text/plain', String(node.id));
+    setDragState({ id: node.id, parentId, overId: null, overSide: 'before' });
+  }
+
+  function onDragOver(event, node, parentId, index) {
+    if (dragState.id === null || parentId !== dragState.parentId || node.id === dragState.id) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const side = event.clientY < bounds.top + bounds.height / 2 ? 'before' : 'after';
+    setDragState(current => (current.overId === node.id && current.overSide === side
+      ? current
+      : { ...current, overId: node.id, overSide: side }));
+    void index;
+  }
+
+  function onDragEnd() {
+    setDragState({ id: null, parentId: null, overId: null, overSide: 'before' });
+  }
+
+  async function onDrop(event, parentId) {
+    event.preventDefault();
+    const { id, overId, overSide } = dragState;
+    onDragEnd();
+    if (id === null || overId === null || parentId !== dragState.parentId) return;
+
+    const siblings = parentId === null
+      ? (data?.categories ?? [])
+      : (flatten(data?.categories ?? []).find(node => node.id === parentId)?.children ?? []);
+    const order = siblings.map(node => node.id).filter(nodeId => nodeId !== id);
+    const target = order.indexOf(overId);
+    if (target === -1) return;
+    order.splice(overSide === 'before' ? target : target + 1, 0, id);
+
+    try {
+      await api('/api/admin/categories/reorder', { method: 'POST', body: { parentId, orderedIds: order } });
+      await load();
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }
+
+  function editPhoto(id, patch) {
+    setSaveStatus('');
+    setDrafts(current => ({ ...current, [id]: { ...current[id], ...patch } }));
+  }
+
+  function discardChanges() {
+    if (!data) return;
+    setSaveStatus('');
+    setDrafts(Object.fromEntries(data.photos.map(photo => [photo.id, baseDraft(photo)])));
+  }
+
+  async function saveChanges() {
+    if (!dirtyPhotos.length) return;
+    setSaving(true);
+    setSaveStatus('');
+    const failed = [];
+    for (const photo of dirtyPhotos) {
+      const draft = drafts[photo.id];
+      try {
+        await api(`/api/admin/photos/${photo.id}`, {
+          method: 'PATCH',
+          body: {
+            caption: draft.caption,
+            takenAt: draft.takenAt,
+            categoryIds: draft.categoryIds.map(Number),
+          },
+        });
+      } catch (requestError) {
+        failed.push({ photo, message: requestError.message });
+      }
+    }
+    setSaving(false);
+    // load() re-seeds every draft, which would silently drop edits that never
+    // reached the server. Only refetch once the whole batch is through.
+    if (!failed.length) {
+      await load();
+      return;
+    }
+    setSaveStatus(failed.length === dirtyPhotos.length
+      ? `Nothing saved. ${failed[0].message}`
+      : `Saved ${dirtyPhotos.length - failed.length} of ${dirtyPhotos.length}. ${failed[0].message}`);
+  }
 
   return (
     <>
@@ -316,6 +476,12 @@ export default function Admin({ authenticated }) {
               </div>
               <CategoryTree
                 nodes={data.categories}
+                drag={{
+                  draggingId: dragState.id,
+                  overId: dragState.overId,
+                  overSide: dragState.overSide,
+                  onDragStart, onDragOver, onDragEnd, onDrop,
+                }}
                 activeId={activeId}
                 openMenuId={openMenuId}
                 onToggleMenu={id => setOpenMenuId(current => current === id ? null : id)}
@@ -329,13 +495,25 @@ export default function Admin({ authenticated }) {
         </aside>
         <main className="admin-main">
           <div className="admin-heading">
-            <div>
+            <div className="admin-title">
               <h1>{active?.name ?? 'All photos'}</h1>
-              <div className="crumb">{data ? `${data.photos.length} photos` : 'Loading…'}</div>
+              <div className="crumb">
+                {data ? `${data.photos.length} photos` : 'Loading…'}
+                {dirtyPhotos.length > 0 && <span className="crumb-pending"> · {dirtyPhotos.length} edited</span>}
+              </div>
             </div>
+            {dirtyPhotos.length > 0 && (
+              <div className="save-bar">
+                <button className="discard" type="button" onClick={discardChanges} disabled={saving}>Discard</button>
+                <button className="save-changes" type="button" onClick={saveChanges} disabled={saving}>
+                  {saving ? 'Saving…' : `Save ${dirtyPhotos.length} photo${dirtyPhotos.length === 1 ? '' : 's'}`}
+                </button>
+              </div>
+            )}
             {data && <StorageBar storage={data.storage} />}
           </div>
           {error && <p className="error-state">{error}</p>}
+          {saveStatus && <p className="error-state" role="alert">{saveStatus}</p>}
           {data && <Upload onComplete={load} />}
           {selectionCategory && (
             <div className="selection-toolbar" aria-live="polite">
@@ -351,6 +529,10 @@ export default function Admin({ authenticated }) {
                     key={photo.id}
                     photo={photo}
                     categories={categories}
+                    draft={drafts[photo.id] ?? baseDraft(photo)}
+                    dirty={Boolean(drafts[photo.id]) && isDirty(drafts[photo.id], photo)}
+                    favoritesId={favoritesId}
+                    onEdit={editPhoto}
                     onChanged={load}
                     selecting={Boolean(selectionCategory)}
                     selected={selectedPhotoIds.includes(photo.id)}

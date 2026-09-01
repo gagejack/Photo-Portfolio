@@ -5,6 +5,7 @@ import { mkdirSync, rmSync, readdirSync, existsSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { extractDate } from './exif.js';
+import { dominantColor as extractDominantColor } from './color.js';
 
 const THUMB_WIDTH = 800;
 const DISPLAY_WIDTH = 2560;
@@ -84,6 +85,7 @@ export async function processUpload({ buffer, mtime, photosRoot }) {
 
   let rotatedWidth;
   let rotatedHeight;
+  let color;
 
   try {
     // `.metadata()` on a `rotate()`-chained pipeline does NOT report swapped
@@ -107,6 +109,7 @@ export async function processUpload({ buffer, mtime, photosRoot }) {
       .resize({ width: THUMB_WIDTH, withoutEnlargement: true })
       .webp({ quality: 78, effort: WEBP_EFFORT })
       .toBuffer();
+    color = await extractDominantColor(thumb);
 
     await writeFile(paths.original, buffer);
     await writeFile(paths.display, display);
@@ -124,5 +127,6 @@ export async function processUpload({ buffer, mtime, photosRoot }) {
     dateSource: source,
     width: rotatedWidth,
     height: rotatedHeight,
+    dominantColor: color,
   };
 }

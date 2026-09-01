@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS photos (
   width       INTEGER NOT NULL,
   height      INTEGER NOT NULL,
   caption     TEXT,
+  dominant_color TEXT,
   created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 

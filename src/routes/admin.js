@@ -11,7 +11,8 @@ import {
   setPhotoCategories, addPhotoCategories, updatePhoto,
 } from '../db/photos.js';
 import {
-  listTree, createCategory, deleteCategory, renameCategory, ancestorIds, CategoryChildrenLimitError,
+  listTree, createCategory, deleteCategory, renameCategory, ancestorIds,
+  reorderCategories, getFavoritesId, CategoryChildrenLimitError,
 } from '../db/categories.js';
 
 const slugify = value => String(value).toLowerCase().trim()
@@ -210,11 +211,33 @@ export function adminRouter({ db, config }) {
     }
   });
 
+  router.post('/api/admin/categories/reorder', requireApiAuth, (req, res) => {
+    const body = req.body ?? {};
+    const parentId = body.parentId === null || body.parentId === undefined || body.parentId === ''
+      ? null
+      : Number(body.parentId);
+    if (parentId !== null && !Number.isInteger(parentId)) {
+      return res.status(400).json({ error: 'Invalid parent category' });
+    }
+    if (!Array.isArray(body.orderedIds) || !body.orderedIds.every(Number.isInteger)) {
+      return res.status(400).json({ error: 'orderedIds must be an array of category IDs' });
+    }
+    try {
+      reorderCategories(db, parentId, body.orderedIds);
+      return res.json({ categories: listTree(db) });
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+  });
+
   router.patch('/api/admin/categories/:id', requireApiAuth, (req, res) => {
     const id = Number(req.params.id);
     const category = flatten(listTree(db)).find(node => node.id === id);
     if (!category) return res.status(404).json({ error: 'Category not found' });
 
+    if (id === getFavoritesId(db)) {
+      return res.status(400).json({ error: 'Favorites cannot be renamed' });
+    }
     const name = String(req.body?.name ?? '').trim();
     if (!name) return res.status(400).json({ error: 'Category name is required' });
     renameCategory(db, id, name);
@@ -241,7 +264,11 @@ export function adminRouter({ db, config }) {
   });
 
   router.delete('/api/admin/categories/:id', requireApiAuth, (req, res) => {
-    deleteCategory(db, Number(req.params.id));
+    const id = Number(req.params.id);
+    if (id === getFavoritesId(db)) {
+      return res.status(400).json({ error: 'Favorites cannot be deleted' });
+    }
+    deleteCategory(db, id);
     return res.status(204).end();
   });
 

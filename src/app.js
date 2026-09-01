@@ -38,7 +38,7 @@ export function createApp({ db, config }) {
 
   app.use(authRouter(config));
   app.use(adminRouter({ db, config }));
-  app.use(publicRouter(db));
+  app.use(publicRouter({ db, config }));
 
   const sendReactApp = (req, res) => {
     res.sendFile(join(APP_ROOT, 'dist', 'index.html'));
